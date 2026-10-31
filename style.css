@@ -481,6 +481,12 @@ input[type=password]:focus { border-color: var(--or); }
 .ai-row.on .ck { background: linear-gradient(135deg, var(--am), var(--or)); border: 0; color: #1a0500; box-shadow: 0 0 10px rgba(255, 122, 26, .7); }
 .ai-row .ck svg.i { width: 16px; height: 16px; stroke-width: 2.5; }
 
+/* ---------- Свои достижения ---------- */
+.tag { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 99px; font: 600 9px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--am); border: 1px solid rgba(255, 176, 32, .5); vertical-align: 2px; }
+.btn.add-own { border-style: dashed; color: var(--am); background: rgba(255, 140, 30, .05); }
+.tier-row { display: grid; grid-template-columns: 84px 1fr 40px; gap: 8px; margin-bottom: 8px; }
+.tier-row input { padding: 10px; }
+
 /* Уважение к настройке «Уменьшить движение» */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }

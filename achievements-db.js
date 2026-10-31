@@ -187,3 +187,7 @@ const QUEST_COUNTERS = {
   q_food: { healthy_food: 1 },
   q_help: { helped: 1 },
 };
+
+// Встроенные + свои достижения игрока (S.custom).
+function counterList(S) { return COUNTERS.concat((S && S.custom && S.custom.counters) || []); }
+function milestoneList(S) { return MILESTONES.concat((S && S.custom && S.custom.milestones) || []); }

@@ -61,10 +61,10 @@ const AI = (() => {
     S.stats.forEach((s) => lines.push(`- ${s.id} — ${s.name}`));
     lines.push('', 'QUESTS (id — name | stat rewards | counters added automatically):');
     S.quests.forEach((q) => lines.push(`- ${q.id} — ${q.name} | ${fmtRewards(q.rewards, S.stats)} | ${Object.entries(q.c || {}).map(([k, v]) => `${k} +${v}`).join(', ') || '—'}`));
-    lines.push('', 'COUNTERS (id — name, unit | sphere):');
-    COUNTERS.forEach((c) => lines.push(`- ${c.id} — ${c.name}, ${c.unit} | ${c.sphere}`));
+    lines.push('', 'COUNTERS (id — name, unit | sphere | what counts, for counters the player created):');
+    counterList(S).forEach((c) => lines.push(`- ${c.id} — ${c.name}, ${c.unit} | ${c.sphere}${c.custom ? ' | player-made' + (c.desc ? ': ' + c.desc : '') : ''}`));
     lines.push('', 'MILESTONES (id — name: description):');
-    MILESTONES.forEach((m) => lines.push(`- ${m.id} — ${m.name}: ${m.desc}`));
+    milestoneList(S).forEach((m) => lines.push(`- ${m.id} — ${m.name}: ${m.desc || m.name}${m.custom ? ' (player-made)' : ''}`));
     return lines.join('\n');
   }
 
@@ -92,8 +92,8 @@ ${catalogue(S)}`;
       summary: { type: 'string' },
       quests: { type: 'array', items: obj({ id: idField(S.quests.map((q) => q.id)), count: { type: 'integer' } }) },
       stats: { type: 'array', items: obj({ id: idField(S.stats.map((s) => s.id)), points: { type: 'integer' }, reason: { type: 'string' } }) },
-      counters: { type: 'array', items: obj({ id: idField(COUNTERS.map((c) => c.id)), amount: { type: 'number' }, reason: { type: 'string' } }) },
-      milestones: { type: 'array', items: obj({ id: idField(MILESTONES.map((m) => m.id)), reason: { type: 'string' } }) },
+      counters: { type: 'array', items: obj({ id: idField(counterList(S).map((c) => c.id)), amount: { type: 'number' }, reason: { type: 'string' } }) },
+      milestones: { type: 'array', items: obj({ id: idField(milestoneList(S).map((m) => m.id)), reason: { type: 'string' } }) },
       note: { type: 'string' },
     });
   }
@@ -136,7 +136,7 @@ ${catalogue(S)}`;
 
     const cMap = {};
     arr(r.counters).forEach((x) => {
-      if (!x || !COUNTERS.find((c) => c.id === x.id)) return;
+      if (!x || !counterList(S).find((c) => c.id === x.id)) return;
       const a = Math.round((Number(x.amount) || 0) * 10) / 10;
       if (!(a > 0)) return;
       const prev = cMap[x.id];
@@ -146,7 +146,7 @@ ${catalogue(S)}`;
 
     const seen = new Set();
     arr(r.milestones).forEach((x) => {
-      if (!x || seen.has(x.id) || unlocked.includes(x.id) || !MILESTONES.find((m) => m.id === x.id)) return;
+      if (!x || seen.has(x.id) || unlocked.includes(x.id) || !milestoneList(S).find((m) => m.id === x.id)) return;
       seen.add(x.id);
       out.milestones.push({ id: x.id, reason: str(x.reason, 160) });
     });

@@ -164,6 +164,7 @@ function defaultState() {
     log: {},
     ach: {},   // achievementId -> dateKey
     settings: { sound: true },
+    custom: { counters: [], milestones: [] },   // свои достижения игрока
     created: todayKey(),
   };
 }
@@ -194,6 +195,7 @@ function migrate(s) {
     for (const k in s.log || {}) for (const x of s.log[k].d || []) if (!x.c) x.c = { ...(QUEST_COUNTERS[x.q] || {}) };
   }
   s.settings = Object.assign({ sound: true }, s.settings || {});
+  s.custom = Object.assign({ counters: [], milestones: [] }, s.custom || {});
   s.v = DATA_VERSION;
   return s;
 }
@@ -255,8 +257,8 @@ function isActive(day) {
 /* ---------------------- Счётчики и вехи ---------------------- */
 
 const round1 = (n) => Math.round(n * 10) / 10;
-const counterById = (id) => COUNTERS.find((c) => c.id === id);
-const milestoneById = (id) => MILESTONES.find((m) => m.id === id);
+const counterById = (id) => counterList(S).find((c) => c.id === id);
+const milestoneById = (id) => milestoneList(S).find((m) => m.id === id);
 const sphereById = (id) => SPHERES.find((s) => s.id === id) || SPHERES[0];
 
 function dayCounters(day) {
@@ -370,7 +372,7 @@ function systemAchievementDefs() {
 function allAchievements() {
   const list = systemAchievementDefs().map((a) => ({ ...a, kind: 'system', sphere: 'system' }));
   const totals = counterTotals();
-  for (const c of COUNTERS) {
+  for (const c of counterList(S)) {
     const v = totals[c.id] || 0;
     c.tiers.forEach((t, i) => list.push({
       id: `t_${c.id}_${t.goal}`, kind: 'tier', counter: c, tier: i, sphere: c.sphere, icon: c.icon,
@@ -378,7 +380,7 @@ function allAchievements() {
     }));
   }
   const md = milestoneDates();
-  for (const m of MILESTONES) list.push({ id: 'm_' + m.id, kind: 'milestone', m, sphere: m.sphere, icon: m.icon, name: m.name, desc: m.desc, ok: !!md[m.id], date: md[m.id] });
+  for (const m of milestoneList(S)) list.push({ id: 'm_' + m.id, kind: 'milestone', m, sphere: m.sphere, icon: m.icon, name: m.name, desc: m.desc, ok: !!md[m.id], date: md[m.id] });
   return list;
 }
 
@@ -796,14 +798,14 @@ function viewAch() {
   } else {
     const sp = sphereById(achSphere);
     const totals = counterTotals();
-    const chains = COUNTERS.filter((c) => c.sphere === achSphere).map((c) => {
+    const chains = counterList(S).filter((c) => c.sphere === achSphere).map((c) => {
       const v = totals[c.id] || 0;
       const nextI = c.tiers.findIndex((t) => v < t.goal);
       const next = nextI >= 0 ? c.tiers[nextI] : null;
       return `<div class="card chain">
         <div class="row">
           <div class="sico" style="color:${sp.color}">${ico(c.icon)}</div>
-          <div class="grow"><div class="sn">${esc(c.name)}</div>
+          <div class="grow"><div class="sn">${esc(c.name)}${c.custom ? '<span class="tag">своё</span>' : ''}</div>
             <div class="sx"><b class="cv">${fmtNum(v)}</b> ${c.unit}${next ? ` · далее «${esc(next.title)}» на ${fmtNum(next.goal)}` : ' · все ступени пройдены'}</div></div>
           <button class="icon-btn" data-act="counter" data-id="${c.id}" aria-label="Добавить">+</button>
         </div>
@@ -816,14 +818,17 @@ function viewAch() {
       </div>`;
     }).join('');
     const md = milestoneDates();
-    const miles = MILESTONES.filter((m) => m.sphere === achSphere).map((m) => `
+    const miles = milestoneList(S).filter((m) => m.sphere === achSphere).map((m) => `
       <button class="card ach ${md[m.id] ? 'got' : 'locked'}" data-act="milestone" data-id="${m.id}">
         <div class="badge">${ico(m.icon)}</div>
         <div class="an">${esc(m.name)}</div>
-        <div class="ad">${esc(m.desc)}</div>
-        <div class="ap">${md[m.id] ? '✓ ' + shortDate(md[m.id]) : 'не открыто'}</div>
+        <div class="ad">${esc(m.desc || '')}</div>
+        <div class="ap">${md[m.id] ? '✓ ' + shortDate(md[m.id]) : 'не открыто'}${m.custom ? ' · своё' : ''}</div>
       </button>`).join('');
-    body = `<h2>Цепочки</h2>${chains}<h2>Вехи</h2><div class="achs">${miles}</div>`;
+    body = `<h2>Цепочки</h2>${chains}
+      <button class="btn block add-own" data-act="add-cc">${ico('sparkle')} Своя цепочка</button>
+      <h2>Вехи</h2><div class="achs">${miles}</div>
+      <button class="btn block add-own" data-act="add-cm" style="margin-top:12px">${ico('sparkle')} Своя веха</button>`;
   }
 
   return `
@@ -972,7 +977,7 @@ function questEditor(id) {
     <div id="qc-list">${Object.entries(q.c || {}).filter(([cid]) => counterById(cid)).map(([cid, v]) => qcRow(cid, v)).join('')}</div>
     <select id="qc-add" class="select">
       <option value="">＋ Привязать счётчик…</option>
-      ${SPHERES.filter((sp) => sp.id !== 'system').map((sp) => `<optgroup label="${sp.name}">${COUNTERS.filter((c) => c.sphere === sp.id).map((c) => `<option value="${c.id}">${esc(c.name)} (${c.unit})</option>`).join('')}</optgroup>`).join('')}
+      ${SPHERES.filter((sp) => sp.id !== 'system').map((sp) => `<optgroup label="${sp.name}">${counterList(S).filter((c) => c.sphere === sp.id).map((c) => `<option value="${c.id}">${esc(c.name)} (${c.unit})</option>`).join('')}</optgroup>`).join('')}
     </select>
     <div class="row" style="margin-top:22px">
       ${id ? `<button class="btn danger" data-act="del-quest" data-id="${id}">Удалить</button>` : ''}
@@ -1014,7 +1019,11 @@ function counterSheet(id) {
       const r = RARITY[Math.min(i, RARITY.length - 1)];
       return `<div class="tier ${total >= t.goal ? 'on' : ''}" style="--r:${r.color}"><span class="hx">${ico(total >= t.goal ? c.icon : 'sparkle')}</span><b>${fmtNum(t.goal)}</b><em>${esc(t.title)}</em></div>`;
     }).join('')}</div>
-    <button class="btn block" data-act="close-sheet" style="margin-top:16px">Готово</button>
+    ${c.desc ? `<div class="small muted" style="margin-top:14px">Что считается: ${esc(c.desc)}</div>` : ''}
+    <div class="row" style="margin-top:16px">
+      ${c.custom ? `<button class="btn grow" data-act="edit-cc" data-id="${id}">Изменить</button>` : ''}
+      <button class="btn grow" data-act="close-sheet">Готово</button>
+    </div>
   `);
 }
 
@@ -1025,15 +1034,130 @@ function milestoneSheet(id) {
     <div class="center">
       <div class="ach ${date ? 'got' : 'locked'}" style="padding:6px 0 0"><div class="badge" style="width:84px;height:84px">${ico(m.icon)}</div></div>
       <h1 style="margin:8px 0 4px">${esc(m.name)}</h1>
-      <div class="muted">${esc(m.desc)}</div>
-      <div class="sx" style="margin-top:8px">${sphereById(m.sphere).name} · ${date ? 'открыто ' + shortDate(date) : 'ещё не открыто'}</div>
+      <div class="muted">${esc(m.desc || '')}</div>
+      <div class="sx" style="margin-top:8px">${sphereById(m.sphere).name} · ${date ? 'открыто ' + shortDate(date) : 'ещё не открыто'}${m.custom ? ' · своё' : ''}</div>
     </div>
     <div class="row" style="margin-top:20px">
-      <button class="btn grow" data-act="close-sheet">Закрыть</button>
+      ${m.custom ? `<button class="btn grow" data-act="edit-cm" data-id="${id}">Изменить</button>` : `<button class="btn grow" data-act="close-sheet">Закрыть</button>`}
       ${date ? `<button class="btn danger grow" data-act="rm-ms" data-id="${id}" data-sheet="1">Снять отметку</button>`
              : `<button class="btn primary grow" data-act="ms-done" data-id="${id}">${ico('check')} Выполнено сегодня</button>`}
     </div>
   `);
+}
+
+/* ---------------------- Свои достижения (редакторы) ---------------------- */
+
+const sphereSelect = (cur) => `<select id="own-sphere" class="select">${SPHERES.filter((sp) => sp.id !== 'system')
+  .map((sp) => `<option value="${sp.id}" ${sp.id === cur ? 'selected' : ''}>${sp.name}</option>`).join('')}</select>`;
+const tierRow = (goal = '', title = '') => `<div class="tier-row" data-tr>
+  <input type="text" inputmode="decimal" class="tg" value="${esc(goal)}" placeholder="Порог">
+  <input type="text" class="tt" value="${esc(title)}" placeholder="Название ступени" maxlength="32">
+  <button class="icon-btn" data-act="rm-tier-row" aria-label="Убрать">✕</button></div>`;
+
+function customCounterEditor(id) {
+  const c = id ? counterById(id) : { name: '', unit: 'раз', desc: '', icon: 'star', sphere: achSphere === 'system' ? 'body' : achSphere,
+    tiers: [{ goal: 1, title: '' }, { goal: 10, title: '' }, { goal: 50, title: '' }] };
+  openSheet(`
+    <h1>${id ? 'Своя цепочка' : 'Новая цепочка'}</h1>
+    <label class="f">Название</label>
+    <input type="text" id="cc-name" value="${esc(c.name)}" maxlength="32" placeholder="Например, Жонглирование">
+    <label class="f">Единица</label>
+    <input type="text" id="cc-unit" value="${esc(c.unit)}" maxlength="12" placeholder="раз, км, ч, страниц…">
+    <label class="f">Что считается (подсказка для ИИ)</label>
+    <input type="text" id="cc-desc" value="${esc(c.desc || '')}" maxlength="120" placeholder="Например: каждая тренировка жонглирования">
+    <label class="f">Сфера</label>
+    ${sphereSelect(c.sphere)}
+    <label class="f">Символ</label>
+    ${iconPicker(c.icon)}
+    <label class="f">Ступени (до 6)</label>
+    <div id="tier-rows">${c.tiers.map((t) => tierRow(t.goal, t.title)).join('')}</div>
+    <button class="btn sm" data-act="add-tier-row" style="margin-top:8px">＋ Ступень</button>
+    <div class="row" style="margin-top:22px">
+      ${id ? `<button class="btn danger" data-act="del-cc" data-id="${id}">Удалить</button>` : ''}
+      <button class="btn grow" data-act="close-sheet">Отмена</button>
+      <button class="btn primary grow" data-act="save-cc" data-id="${id || ''}">Сохранить</button>
+    </div>
+  `);
+}
+
+function customMilestoneEditor(id) {
+  const m = id ? milestoneById(id) : { name: '', desc: '', icon: 'star', sphere: achSphere === 'system' ? 'body' : achSphere };
+  openSheet(`
+    <h1>${id ? 'Своя веха' : 'Новая веха'}</h1>
+    <label class="f">Название</label>
+    <input type="text" id="cm-name" value="${esc(m.name)}" maxlength="32" placeholder="Например, Научился жонглировать">
+    <label class="f">Описание</label>
+    <input type="text" id="cm-desc" value="${esc(m.desc || '')}" maxlength="120" placeholder="Например: жонглирую тремя мячами минуту без падений">
+    <label class="f">Сфера</label>
+    ${sphereSelect(m.sphere)}
+    <label class="f">Символ</label>
+    ${iconPicker(m.icon)}
+    <div class="row" style="margin-top:22px">
+      ${id ? `<button class="btn danger" data-act="del-cm" data-id="${id}">Удалить</button>` : ''}
+      <button class="btn grow" data-act="close-sheet">Отмена</button>
+      <button class="btn primary grow" data-act="save-cm" data-id="${id || ''}">Сохранить</button>
+    </div>
+  `);
+}
+
+function saveCustomCounter(id) {
+  const name = $('#cc-name').value.trim();
+  if (!name) { toast('Введи название'); return; }
+  const unit = $('#cc-unit').value.trim() || 'раз';
+  const seen = new Set();
+  const tiers = [...document.querySelectorAll('#tier-rows [data-tr]')].map((row) => ({
+    goal: round1(parseFloat(row.querySelector('.tg').value.replace(',', '.'))),
+    title: row.querySelector('.tt').value.trim(),
+  })).filter((t) => t.goal > 0 && !seen.has(t.goal) && seen.add(t.goal))
+    .sort((a, b) => a.goal - b.goal).slice(0, 6)
+    .map((t) => ({ goal: t.goal, title: t.title || `${name}: ${fmtNum(t.goal)} ${unit}` }));
+  if (!tiers.length) { toast('Добавь хотя бы одну ступень с порогом'); return; }
+  const data = { name, unit, desc: $('#cc-desc').value.trim(), sphere: $('#own-sphere').value, icon: $('#pick-icon').value || 'star', tiers, custom: true };
+  closeSheet();
+  mutate(() => {
+    if (id) Object.assign(S.custom.counters.find((c) => c.id === id), data);
+    else S.custom.counters.push({ id: uid('cc'), ...data });
+  });
+  achSphere = data.sphere;
+  render(false);
+}
+
+function saveCustomMilestone(id) {
+  const name = $('#cm-name').value.trim();
+  if (!name) { toast('Введи название'); return; }
+  const data = { name, desc: $('#cm-desc').value.trim(), sphere: $('#own-sphere').value, icon: $('#pick-icon').value || 'star', custom: true };
+  closeSheet();
+  mutate(() => {
+    if (id) Object.assign(S.custom.milestones.find((m) => m.id === id), data);
+    else S.custom.milestones.push({ id: uid('cm'), ...data });
+  });
+  achSphere = data.sphere;
+  render(false);
+}
+
+function deleteCustomCounter(id) {
+  if (!confirm('Удалить цепочку вместе с накопленным прогрессом?')) return;
+  closeSheet();
+  mutate(() => {
+    S.custom.counters = S.custom.counters.filter((c) => c.id !== id);
+    for (const k in S.log) {
+      const d = S.log[k];
+      if (d.c) delete d.c[id];
+      for (const x of d.d || []) if (x.c) delete x.c[id];
+    }
+    for (const q of S.quests) if (q.c) delete q.c[id];
+    for (const k of Object.keys(S.ach)) if (k.startsWith(`t_${id}_`)) delete S.ach[k];
+  });
+}
+
+function deleteCustomMilestone(id) {
+  if (!confirm('Удалить веху?')) return;
+  closeSheet();
+  mutate(() => {
+    S.custom.milestones = S.custom.milestones.filter((m) => m.id !== id);
+    for (const k in S.log) if (S.log[k].ms) S.log[k].ms = S.log[k].ms.filter((m) => m !== id);
+    delete S.ach['m_' + id];
+  });
 }
 
 /* ---------------------- ИИ-помощник ---------------------- */
@@ -1456,6 +1580,19 @@ document.addEventListener('click', (e) => {
       break;
     }
     case 'milestone': milestoneSheet(id); break;
+    case 'add-cc': customCounterEditor(null); break;
+    case 'edit-cc': customCounterEditor(id); break;
+    case 'save-cc': saveCustomCounter(id); break;
+    case 'del-cc': deleteCustomCounter(id); break;
+    case 'add-cm': customMilestoneEditor(null); break;
+    case 'edit-cm': customMilestoneEditor(id); break;
+    case 'save-cm': saveCustomMilestone(id); break;
+    case 'del-cm': deleteCustomMilestone(id); break;
+    case 'add-tier-row':
+      if (document.querySelectorAll('#tier-rows [data-tr]').length >= 6) { toast('Максимум 6 ступеней'); break; }
+      $('#tier-rows').insertAdjacentHTML('beforeend', tierRow());
+      break;
+    case 'rm-tier-row': el.closest('[data-tr]').remove(); break;
     case 'ms-done': {
       closeSheet();
       mutate(() => { const day = ensureDay(todayKey()); if (!day.ms.includes(id)) day.ms.push(id); });
