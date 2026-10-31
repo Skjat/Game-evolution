@@ -1,10 +1,14 @@
 // Service worker: offline-кэш. При изменении файлов увеличивай VERSION.
-const VERSION = 'lvlup-v2';
+const VERSION = 'lvlup-v3';
 const ASSETS = [
   './',
   './index.html',
   './style.css',
   './app.js',
+  './achievements-db.js',
+  './sound.js',
+  './ai.js',
+  './vendor/anthropic-sdk.mjs',
   './manifest.webmanifest',
   './fonts.css',
   './fonts/Exo2-cyrillic-0.woff2',

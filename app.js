@@ -6,7 +6,7 @@
    ===================================================================== */
 
 const STORAGE_KEY = 'lvlup.v1';
-const DATA_VERSION = 2;
+const DATA_VERSION = 3;
 
 /* ---------------------- Иконки (SVG, 24×24, линии) ---------------------- */
 
@@ -58,10 +58,28 @@ const ICONS = {
   shieldStar: '<path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"/><path d="M12 8l1.5 3 3 .4-2.2 2 .6 3L12 15l-2.9 1.4.6-3-2.2-2 3-.4z"/>',
   upload: '<path d="M12 15V3M7 8l5-5 5 5M4 15v5h16v-5"/>',
   download: '<path d="M12 3v12M7 10l5 5 5-5M4 15v5h16v-5"/>',
+  mountain: '<path d="M2 20l7-12 4 6 3-4 6 10z M9 8l2 3"/>',
+  bike: '<circle cx="5.5" cy="17" r="3.5"/><circle cx="18.5" cy="17" r="3.5"/><path d="M5.5 17l4-8h6l3 8M9.5 9l2.5 8H5.5M15 6h2.5"/>',
+  swim: '<path d="M2 18c2 0 2-1.5 4-1.5s2 1.5 4 1.5 2-1.5 4-1.5 2 1.5 4 1.5 2-1.5 4-1.5M2 22c2 0 2-1.5 4-1.5s2 1.5 4 1.5 2-1.5 4-1.5 2 1.5 4 1.5 2-1.5 4-1.5"/><circle cx="16" cy="6" r="2"/><path d="M5 14l5-6 4 3 3 2"/>',
+  drop: '<path d="M12 2s7 7.5 7 13a7 7 0 0 1-14 0c0-5.5 7-13 7-13z"/>',
+  chat: '<path d="M4 5h16v11H9l-5 4z M8 9h8M8 12h5"/>',
+  users: '<circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-4 3-6 7-6s7 2 7 6"/><circle cx="17" cy="9" r="2.5"/><path d="M17 14c3 0 5 1.5 5 5"/>',
+  hourglass: '<path d="M6 2h12M6 22h12M7 2v3l5 7-5 7v3M17 2v3l-5 7 5 7v3"/>',
+  briefcase: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V4h8v3M3 12h18"/>',
+  wallet: '<path d="M3 7h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 7l13-4v4"/><circle cx="16.5" cy="13.5" r="1.5"/>',
+  pot: '<path d="M4 10h16v6a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4zM2 10h20M9 6c0-1 1-1.5 1-3M14 6c0-1 1-1.5 1-3"/>',
+  phoneOff: '<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2M3 3l18 18"/>',
+  tree: '<path d="M12 22v-6M12 2l6 8h-3l4 6H5l4-6H6z"/>',
+  gift: '<rect x="3" y="8" width="18" height="5"/><path d="M5 13v8h14v-8M12 8v13M12 8c-2-4-6-4-6-1.5S10 8 12 8zM12 8c2-4 6-4 6-1.5S14 8 12 8z"/>',
+  camera: '<path d="M3 7h4l2-3h6l2 3h4v13H3z"/><circle cx="12" cy="13" r="4"/>',
+  plane: '<path d="M2 13l8-1 4-8h2l-1 8 6 1v2l-6 1 1 4h-2l-4-4-8-1z"/>',
+  sparkle: '<path d="M12 2l2 7 7 3-7 3-2 7-2-7-7-3 7-3z"/>',
+  check: '<path d="M4 12l5 5L20 6"/>',
 };
 const ICON_CHOICES = ['sword', 'swift', 'shield', 'hex', 'eye', 'crown', 'flame', 'bolt', 'star', 'gem', 'atom', 'moon', 'sun',
   'dumbbell', 'wind', 'lotus', 'ball', 'book', 'cap', 'candle', 'link', 'mic', 'leaf', 'heart', 'brush', 'note', 'coin',
-  'target', 'rocket', 'compass', 'globe', 'pen', 'home', 'skull', 'claw', 'seed'];
+  'target', 'rocket', 'compass', 'globe', 'pen', 'home', 'skull', 'claw', 'seed', 'mountain', 'bike', 'swim', 'drop',
+  'chat', 'users', 'hourglass', 'briefcase', 'wallet', 'pot', 'phoneOff', 'tree', 'gift', 'camera', 'plane', 'sparkle'];
 const AVATAR_CHOICES = ['reactor', 'flame', 'skull', 'eye', 'crown', 'sword', 'star', 'moon', 'claw', 'atom', 'gem', 'bolt'];
 
 const ico = (k, cls = '') => ICONS[k]
@@ -141,9 +159,11 @@ function defaultState() {
     v: DATA_VERSION,
     profile: { name: 'Герой', avatar: 'reactor' },
     stats: clone(DEFAULT_STATS),
-    quests: clone(DEFAULT_QUESTS),
-    log: {},   // 'YYYY-MM-DD' -> { m: {statId: n}, d: [{q, n, i, r}], note }
+    quests: DEFAULT_QUESTS.map((q) => ({ ...clone(q), c: { ...(QUEST_COUNTERS[q.id] || {}) } })),
+    // 'YYYY-MM-DD' -> { m: {statId: очки}, d: [{q, n, i, r, c}], c: {counterId: n}, ms: [milestoneId], note }
+    log: {},
     ach: {},   // achievementId -> dateKey
+    settings: { sound: true },
     created: todayKey(),
   };
 }
@@ -156,16 +176,24 @@ const EMOJI_TO_ICON = {
 };
 const OLD_COLORS = { str: '#ef4444', agi: '#22c55e', end: '#f97316', int: '#3b82f6', wis: '#a855f7', cha: '#eab308' };
 function migrate(s) {
-  if ((s.v || 1) >= DATA_VERSION) return s;
-  const mapIcon = (i) => EMOJI_TO_ICON[i] || i;
-  for (const st of s.stats || []) {
-    st.icon = mapIcon(st.icon);
-    const def = DEFAULT_STATS.find((d) => d.id === st.id);
-    if (def && st.color === OLD_COLORS[st.id]) st.color = def.color;
+  const v = s.v || 1;
+  if (v < 2) {
+    const mapIcon = (i) => EMOJI_TO_ICON[i] || i;
+    for (const st of s.stats || []) {
+      st.icon = mapIcon(st.icon);
+      const def = DEFAULT_STATS.find((d) => d.id === st.id);
+      if (def && st.color === OLD_COLORS[st.id]) st.color = def.color;
+    }
+    for (const q of s.quests || []) q.icon = mapIcon(q.icon);
+    for (const k in s.log || {}) for (const x of s.log[k].d || []) x.i = mapIcon(x.i);
+    if (s.profile && !ICONS[s.profile.avatar]) s.profile.avatar = 'reactor';
   }
-  for (const q of s.quests || []) q.icon = mapIcon(q.icon);
-  for (const k in s.log || {}) for (const x of s.log[k].d || []) x.i = mapIcon(x.i);
-  if (s.profile && !ICONS[s.profile.avatar]) s.profile.avatar = 'reactor';
+  if (v < 3) {
+    // Стандартные подвиги теперь двигают счётчики достижений — в том числе задним числом.
+    for (const q of s.quests || []) if (!q.c) q.c = { ...(QUEST_COUNTERS[q.id] || {}) };
+    for (const k in s.log || {}) for (const x of s.log[k].d || []) if (!x.c) x.c = { ...(QUEST_COUNTERS[x.q] || {}) };
+  }
+  s.settings = Object.assign({ sound: true }, s.settings || {});
   s.v = DATA_VERSION;
   return s;
 }
@@ -204,7 +232,10 @@ const charK = () => 5 * Math.max(1, S.stats.length);
 function getDay(k) { return S.log[k]; }
 function ensureDay(k) {
   if (!S.log[k]) S.log[k] = { m: {}, d: [], note: '' };
-  return S.log[k];
+  const d = S.log[k];
+  if (!d.c) d.c = {};
+  if (!d.ms) d.ms = [];
+  return d;
 }
 function dayPoints(day) {
   const p = {};
@@ -217,7 +248,38 @@ function dayTotal(day) {
   const p = dayPoints(day);
   return S.stats.reduce((s, st) => s + (p[st.id] || 0), 0);
 }
-function isActive(day) { return !!day && ((day.d && day.d.length > 0) || dayTotal(day) > 0); }
+function isActive(day) {
+  return !!day && ((day.d && day.d.length > 0) || dayTotal(day) > 0 || Object.keys(day.c || {}).length > 0 || (day.ms || []).length > 0);
+}
+
+/* ---------------------- Счётчики и вехи ---------------------- */
+
+const round1 = (n) => Math.round(n * 10) / 10;
+const counterById = (id) => COUNTERS.find((c) => c.id === id);
+const milestoneById = (id) => MILESTONES.find((m) => m.id === id);
+const sphereById = (id) => SPHERES.find((s) => s.id === id) || SPHERES[0];
+
+function dayCounters(day) {
+  const c = {};
+  if (!day) return c;
+  for (const id in day.c || {}) c[id] = (c[id] || 0) + day.c[id];
+  for (const x of day.d || []) for (const id in x.c || {}) c[id] = (c[id] || 0) + x.c[id];
+  for (const id in c) c[id] = round1(c[id]);
+  return c;
+}
+function counterTotals() {
+  const t = {};
+  for (const k in S.log) { const c = dayCounters(S.log[k]); for (const id in c) t[id] = (t[id] || 0) + c[id]; }
+  for (const id in t) t[id] = Math.max(0, round1(t[id]));
+  return t;
+}
+// Вехи: id -> дата, когда открыта (самая ранняя).
+function milestoneDates() {
+  const m = {};
+  for (const k of Object.keys(S.log).sort()) for (const id of S.log[k].ms || []) if (!m[id]) m[id] = k;
+  return m;
+}
+const fmtNum = (n) => (Number.isInteger(n) ? fmt(n) : String(n).replace('.', ','));
 
 function statXP() {
   const xp = {};
@@ -264,7 +326,7 @@ function snapshot() {
 
 /* ---------------------- Достижения ---------------------- */
 
-function achievementDefs() {
+function systemAchievementDefs() {
   const xp = statXP();
   const levels = S.stats.map((s) => levelInfo(xp[s.id], STAT_K).level);
   const maxLvl = levels.length ? Math.max(...levels) : 0;
@@ -304,13 +366,34 @@ function achievementDefs() {
   ];
 }
 
-function checkAchievements(silent) {
-  for (const a of achievementDefs()) {
-    if (a.ok && !S.ach[a.id]) {
-      S.ach[a.id] = todayKey();
-      if (!silent) toast('Достижение: ' + a.name, 'gold', a.icon);
-    }
+// Все достижения: системные + ступени счётчиков + вехи.
+function allAchievements() {
+  const list = systemAchievementDefs().map((a) => ({ ...a, kind: 'system', sphere: 'system' }));
+  const totals = counterTotals();
+  for (const c of COUNTERS) {
+    const v = totals[c.id] || 0;
+    c.tiers.forEach((t, i) => list.push({
+      id: `t_${c.id}_${t.goal}`, kind: 'tier', counter: c, tier: i, sphere: c.sphere, icon: c.icon,
+      name: t.title, desc: `${c.name}: ${fmtNum(t.goal)} ${c.unit}`, ok: v >= t.goal, v: Math.min(v, t.goal), goal: t.goal,
+    }));
   }
+  const md = milestoneDates();
+  for (const m of MILESTONES) list.push({ id: 'm_' + m.id, kind: 'milestone', m, sphere: m.sphere, icon: m.icon, name: m.name, desc: m.desc, ok: !!md[m.id], date: md[m.id] });
+  return list;
+}
+
+function checkAchievements(silent) {
+  const fresh = [];
+  for (const a of allAchievements()) {
+    if (a.ok && !S.ach[a.id]) { S.ach[a.id] = a.date || todayKey(); fresh.push(a); }
+    else if (!a.ok && S.ach[a.id]) delete S.ach[a.id];   // отменили запись — награда снова закрыта
+  }
+  if (silent || !fresh.length) return;
+  if (fresh.length > 3) toast(`Открыто достижений: ${fresh.length}`, 'gold', 'trophy');
+  else fresh.forEach((a, i) => setTimeout(() => toast(
+    a.kind === 'tier' ? `${a.counter.name}: «${a.name}» · ${RARITY[Math.min(a.tier, RARITY.length - 1)].name}` : 'Достижение: ' + a.name,
+    'gold', a.icon), i * 350));
+  SFX.play('achieve');
 }
 
 /* ---------------------- Изменения с отслеживанием уровня ---------------------- */
@@ -386,6 +469,7 @@ function reactorHTML(icon, lvlText) {
 }
 
 function celebrate(ups, charLvl) {
+  SFX.play(charLvl ? 'overload' : 'levelup');
   const el = document.createElement('div');
   el.className = 'lu';
   let sparks = '';
@@ -410,10 +494,10 @@ function celebrate(ups, charLvl) {
 }
 
 function openSheet(html) {
-  $('#sheet-card').innerHTML = html;
+  $('#sheet-card').innerHTML = `<button class="sheet-x" data-act="close-sheet" aria-label="Закрыть">✕</button>` + html;
   $('#sheet').classList.remove('hidden');
 }
-function closeSheet() { $('#sheet').classList.add('hidden'); $('#sheet-card').innerHTML = ''; }
+function closeSheet() { micStop(); $('#sheet').classList.add('hidden'); $('#sheet-card').innerHTML = ''; }
 
 function statById(id) { return S.stats.find((s) => s.id === id); }
 function rewardsHTML(r) {
@@ -564,6 +648,22 @@ function viewDay() {
       <button class="icon-btn" data-act="undo-quest" data-idx="${i}" aria-label="Отменить">✕</button>
     </div>`).join('');
 
+  const dc = dayCounters(day);
+  const progress = [
+    ...Object.entries(dc).filter(([id, v]) => v && counterById(id)).map(([id, v]) => {
+      const c = counterById(id), manual = (day.c || {})[id] || 0;
+      return `<div class="prog-item"><div class="sico" style="color:${sphereById(c.sphere).color}">${ico(c.icon)}</div>
+        <div class="grow"><div class="sn">${esc(c.name)}</div><div class="sx">+${fmtNum(v)} ${c.unit}${manual !== v ? ' · из подвигов ' + fmtNum(round1(v - manual)) : ''}</div></div>
+        ${manual ? `<button class="icon-btn" data-act="rm-counter" data-id="${id}" aria-label="Убрать">✕</button>` : ''}</div>`;
+    }),
+    ...(day.ms || []).filter(milestoneById).map((id) => {
+      const m = milestoneById(id);
+      return `<div class="prog-item"><div class="sico ms" style="color:var(--am)">${ico(m.icon)}</div>
+        <div class="grow"><div class="sn">${esc(m.name)}</div><div class="sx">веха · ${esc(m.desc)}</div></div>
+        <button class="icon-btn" data-act="rm-ms" data-id="${id}" aria-label="Убрать">✕</button></div>`;
+    }),
+  ].join('');
+
   const rows = S.stats.map((s) => {
     const v = pts[s.id] || 0;
     return `
@@ -588,6 +688,8 @@ function viewDay() {
       <div class="daytotal" id="daytotal">${total > 0 ? '+' : ''}${total} XP</div>
       <div class="small muted">${total ? 'энергии получено за день' : 'Отметь, что сделал сегодня, — и ядро зарядится'}</div>
     </div>
+    <button class="cta ai-cta" data-act="ai-open">${ico('mic')} Рассказать о дне ИИ</button>
+    ${progress ? `<h2>Прогресс достижений</h2><div class="card">${progress}</div>` : ''}
     <h2>Подвиги дня</h2>
     <div class="quests">${quests}</div>
     ${done ? `<div class="card" style="margin-top:12px">${done}</div>` : ''}
@@ -647,6 +749,7 @@ function viewHistory() {
         <div class="row between"><b>${humanDate(k)}</b><span class="today-plus">${sign(dayTotal(d))} XP</span></div>
         ${chips ? `<div class="chips">${chips}</div>` : ''}
         ${(d.d || []).length ? `<div class="ic">${d.d.map((x) => ico(x.i)).join('')}</div>` : ''}
+        ${(d.ms || []).filter(milestoneById).map((id) => `<div class="ms-line">${ico(milestoneById(id).icon)}<span>${esc(milestoneById(id).name)}</span></div>`).join('')}
         ${note ? `<div class="quote">«${esc(note.slice(0, 140))}${note.length > 140 ? '…' : ''}»</div>` : ''}
       </button>`;
   }).join('');
@@ -669,24 +772,68 @@ function viewHistory() {
   `;
 }
 
+let achSphere = 'system';
+
 function viewAch() {
-  const defs = achievementDefs();
-  const got = defs.filter((a) => S.ach[a.id]).length;
+  const all = allAchievements();
+  const got = all.filter((a) => a.ok).length;
+  const bySphere = (id) => all.filter((a) => a.sphere === id);
+  const chips = SPHERES.map((sp) => {
+    const list = bySphere(sp.id);
+    return `<button class="sp ${achSphere === sp.id ? 'on' : ''}" data-act="sphere" data-s="${sp.id}" style="--c:${sp.color}">
+      ${ico(sp.icon)}<span>${sp.name}</span><b>${list.filter((a) => a.ok).length}/${list.length}</b></button>`;
+  }).join('');
+
+  let body = '';
+  if (achSphere === 'system') {
+    body = `<div class="achs">${bySphere('system').map((a) => `<div class="card ach ${a.ok ? 'got' : 'locked'}">
+        <div class="badge">${ico(a.icon)}</div>
+        <div class="an">${a.name}</div>
+        <div class="ad">${a.desc}</div>
+        ${a.ok ? `<div class="ap">✓ ${shortDate(S.ach[a.id] || todayKey())}</div>`
+               : `<div class="ap">${a.v} / ${a.goal}</div>${barHTML('ach-' + a.id, a.v / a.goal, '#ff4a2a')}`}
+      </div>`).join('')}</div>`;
+  } else {
+    const sp = sphereById(achSphere);
+    const totals = counterTotals();
+    const chains = COUNTERS.filter((c) => c.sphere === achSphere).map((c) => {
+      const v = totals[c.id] || 0;
+      const nextI = c.tiers.findIndex((t) => v < t.goal);
+      const next = nextI >= 0 ? c.tiers[nextI] : null;
+      return `<div class="card chain">
+        <div class="row">
+          <div class="sico" style="color:${sp.color}">${ico(c.icon)}</div>
+          <div class="grow"><div class="sn">${esc(c.name)}</div>
+            <div class="sx"><b class="cv">${fmtNum(v)}</b> ${c.unit}${next ? ` · далее «${esc(next.title)}» на ${fmtNum(next.goal)}` : ' · все ступени пройдены'}</div></div>
+          <button class="icon-btn" data-act="counter" data-id="${c.id}" aria-label="Добавить">+</button>
+        </div>
+        ${barHTML('ch-' + c.id, next ? v / next.goal : 1, sp.color)}
+        <div class="tiers">${c.tiers.map((t, i) => {
+          const r = RARITY[Math.min(i, RARITY.length - 1)];
+          return `<button class="tier ${v >= t.goal ? 'on' : ''}" style="--r:${r.color}" data-act="tier" data-id="${c.id}" data-i="${i}">
+            <span class="hx">${ico(v >= t.goal ? c.icon : 'sparkle')}</span><b>${fmtNum(t.goal)}</b></button>`;
+        }).join('')}</div>
+      </div>`;
+    }).join('');
+    const md = milestoneDates();
+    const miles = MILESTONES.filter((m) => m.sphere === achSphere).map((m) => `
+      <button class="card ach ${md[m.id] ? 'got' : 'locked'}" data-act="milestone" data-id="${m.id}">
+        <div class="badge">${ico(m.icon)}</div>
+        <div class="an">${esc(m.name)}</div>
+        <div class="ad">${esc(m.desc)}</div>
+        <div class="ap">${md[m.id] ? '✓ ' + shortDate(md[m.id]) : 'не открыто'}</div>
+      </button>`).join('');
+    body = `<h2>Цепочки</h2>${chains}<h2>Вехи</h2><div class="achs">${miles}</div>`;
+  }
+
   return `
     <h1>Награды</h1>
-    <div class="card sweep row between"><span class="sn">Получено</span><span class="bigxp">${got} / ${defs.length}</span></div>
-    <div class="achs">
-      ${defs.map((a) => {
-        const has = !!S.ach[a.id];
-        return `<div class="card ach ${has ? 'got' : 'locked'}">
-          <div class="badge">${ico(a.icon)}</div>
-          <div class="an">${a.name}</div>
-          <div class="ad">${a.desc}</div>
-          ${has ? `<div class="ap">✓ ${shortDate(S.ach[a.id])}</div>`
-                : `<div class="ap">${a.v} / ${a.goal}</div>${barHTML('ach-' + a.id, a.v / a.goal, '#ff4a2a')}`}
-        </div>`;
-      }).join('')}
+    <div class="card sweep">
+      <div class="row between"><span class="sn">Открыто</span><span class="bigxp">${got} / ${all.length}</span></div>
+      ${barHTML('ach-all', got / all.length, '#ff4a2a')}
     </div>
+    <div class="spheres">${chips}</div>
+    ${body}
   `;
 }
 
@@ -724,6 +871,15 @@ function viewSettings() {
       <button class="btn block" data-act="add-quest" style="margin-top:10px">＋ Добавить подвиг</button>
     </div>
 
+    <h2>ИИ-помощник</h2>
+    ${aiSettingsHTML()}
+
+    <h2>Звук</h2>
+    <div class="card row between">
+      <div><div style="font-weight:600">Звуковые эффекты</div><div class="small muted">На iPhone молчат в беззвучном режиме</div></div>
+      <button class="switch ${S.settings.sound ? 'on' : ''}" data-act="sound" aria-label="Звук"><i></i></button>
+    </div>
+
     <h2>Данные</h2>
     <div class="card">
       <div class="small muted" style="margin-bottom:10px">Данные хранятся только на этом телефоне. Время от времени делай резервную копию.</div>
@@ -749,8 +905,9 @@ function viewSettings() {
       Каждый вечер отмечай подвиги и/или вручную начисляй очки параметрам.
       Чтобы параметр перешёл с уровня N на N+1, нужно 10×N очков: первые уровни даются быстро, дальше нужна регулярность.
       Уровень персонажа растёт от суммы всех очков. Серия — сколько дней подряд ты прокачивался.
+      Подвиги, ручные отметки и ИИ-отчёт двигают счётчики достижений: книги, километры, знакомства и т.д.
     </div>
-    <div class="ver">LEVEL UP · v2 · REACTOR</div>
+    <div class="ver">LEVEL UP · v3 · REACTOR</div>
   `;
 }
 
@@ -777,8 +934,20 @@ function statEditor(id) {
   `);
 }
 
+function qcRow(cid, v) {
+  const c = counterById(cid);
+  return `<div class="list-item" data-qc="${cid}">
+    <div class="sico" style="color:${sphereById(c.sphere).color}">${ico(c.icon)}</div>
+    <div class="grow"><div class="sn">${esc(c.name)}</div><div class="sx">${c.unit}</div></div>
+    <div class="stepper">
+      <button class="icon-btn" data-act="qc-dec" data-id="${cid}">−</button>
+      <span class="val pos" id="qc-${cid}" data-v="${v}">${v}</span>
+      <button class="icon-btn" data-act="qc-inc" data-id="${cid}">+</button>
+    </div></div>`;
+}
+
 function questEditor(id) {
-  const q = id ? S.quests.find((x) => x.id === id) : { id: '', name: '', icon: 'bolt', rewards: {} };
+  const q = id ? S.quests.find((x) => x.id === id) : { id: '', name: '', icon: 'bolt', rewards: {}, c: {} };
   openSheet(`
     <h1>${id ? 'Подвиг' : 'Новый подвиг'}</h1>
     <label class="f">Название</label>
@@ -799,6 +968,12 @@ function questEditor(id) {
         </div>
       </div>`;
     }).join('')}
+    <label class="f">Счётчики достижений</label>
+    <div id="qc-list">${Object.entries(q.c || {}).filter(([cid]) => counterById(cid)).map(([cid, v]) => qcRow(cid, v)).join('')}</div>
+    <select id="qc-add" class="select">
+      <option value="">＋ Привязать счётчик…</option>
+      ${SPHERES.filter((sp) => sp.id !== 'system').map((sp) => `<optgroup label="${sp.name}">${COUNTERS.filter((c) => c.sphere === sp.id).map((c) => `<option value="${c.id}">${esc(c.name)} (${c.unit})</option>`).join('')}</optgroup>`).join('')}
+    </select>
     <div class="row" style="margin-top:22px">
       ${id ? `<button class="btn danger" data-act="del-quest" data-id="${id}">Удалить</button>` : ''}
       <button class="btn grow" data-act="close-sheet">Отмена</button>
@@ -806,6 +981,282 @@ function questEditor(id) {
     </div>
   `);
 }
+
+/* ---------------------- Счётчики и вехи (шторки) ---------------------- */
+
+function counterSheet(id) {
+  const c = counterById(id);
+  const sp = sphereById(c.sphere);
+  const total = counterTotals()[id] || 0;
+  const today = dayCounters(getDay(todayKey()))[id] || 0;
+  const next = c.tiers.find((t) => total < t.goal);
+  const big = ['км', 'ч'].includes(c.unit);
+  openSheet(`
+    <div class="row" style="gap:14px">
+      <div class="sico" style="color:${sp.color};width:52px;height:52px">${ico(c.icon)}</div>
+      <div class="grow"><h1 style="margin:0">${esc(c.name)}</h1><div class="sx">${sp.name}</div></div>
+    </div>
+    <div class="kpis" style="grid-template-columns:1fr 1fr">
+      <div class="kpi"><b>${fmtNum(total)}</b><span>всего, ${c.unit}</span></div>
+      <div class="kpi"><b>${fmtNum(today)}</b><span>сегодня</span></div>
+    </div>
+    <div class="small muted" style="margin:12px 2px">${next ? `До ступени «${esc(next.title)}»: ${fmtNum(round1(next.goal - total))} ${c.unit}` : 'Все ступени этой цепочки пройдены!'}</div>
+    <label class="f">Добавить за сегодня</label>
+    <div class="row qty">
+      ${(big ? [1, 5, 10] : [1, 2, 5]).map((n) => `<button class="btn grow" data-act="counter-add" data-id="${id}" data-n="${n}">+${n}</button>`).join('')}
+    </div>
+    <div class="row" style="margin-top:8px">
+      <input type="text" inputmode="decimal" id="counter-n" placeholder="Своё число, ${c.unit}">
+      <button class="btn primary" data-act="counter-add" data-id="${id}" data-n="custom">Добавить</button>
+    </div>
+    ${(getDay(todayKey()) && (getDay(todayKey()).c || {})[id]) ? `<button class="btn danger block" data-act="counter-add" data-id="${id}" data-n="-1" style="margin-top:8px">−1 за сегодня</button>` : ''}
+    <div class="tiers big">${c.tiers.map((t, i) => {
+      const r = RARITY[Math.min(i, RARITY.length - 1)];
+      return `<div class="tier ${total >= t.goal ? 'on' : ''}" style="--r:${r.color}"><span class="hx">${ico(total >= t.goal ? c.icon : 'sparkle')}</span><b>${fmtNum(t.goal)}</b><em>${esc(t.title)}</em></div>`;
+    }).join('')}</div>
+    <button class="btn block" data-act="close-sheet" style="margin-top:16px">Готово</button>
+  `);
+}
+
+function milestoneSheet(id) {
+  const m = milestoneById(id);
+  const date = milestoneDates()[id];
+  openSheet(`
+    <div class="center">
+      <div class="ach ${date ? 'got' : 'locked'}" style="padding:6px 0 0"><div class="badge" style="width:84px;height:84px">${ico(m.icon)}</div></div>
+      <h1 style="margin:8px 0 4px">${esc(m.name)}</h1>
+      <div class="muted">${esc(m.desc)}</div>
+      <div class="sx" style="margin-top:8px">${sphereById(m.sphere).name} · ${date ? 'открыто ' + shortDate(date) : 'ещё не открыто'}</div>
+    </div>
+    <div class="row" style="margin-top:20px">
+      <button class="btn grow" data-act="close-sheet">Закрыть</button>
+      ${date ? `<button class="btn danger grow" data-act="rm-ms" data-id="${id}" data-sheet="1">Снять отметку</button>`
+             : `<button class="btn primary grow" data-act="ms-done" data-id="${id}">${ico('check')} Выполнено сегодня</button>`}
+    </div>
+  `);
+}
+
+/* ---------------------- ИИ-помощник ---------------------- */
+
+function aiSettingsHTML() {
+  const c = AI.cfg();
+  const claude = c.provider === 'claude';
+  return `<div class="card">
+    <div class="small muted" style="margin-bottom:10px">Вечером расскажи (голосом или текстом), что сделал за день. ИИ сам начислит очки, отметит подвиги, счётчики и вехи, а ты подтвердишь.</div>
+    <div class="seg">
+      <button data-act="ai-provider" data-p="claude" class="${claude ? 'active' : ''}">Claude</button>
+      <button data-act="ai-provider" data-p="custom" class="${claude ? '' : 'active'}">Свой сервер</button>
+    </div>
+    ${claude ? `
+      <label class="f">API-ключ Claude</label>
+      <input type="password" id="ai-claude-key" value="${esc(c.claudeKey)}" placeholder="sk-ant-…" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <label class="f">Модель</label>
+      <select id="ai-claude-model" class="select">${AI.CLAUDE_MODELS.map(([id, label]) => `<option value="${id}" ${c.claudeModel === id ? 'selected' : ''}>${label}</option>`).join('')}</select>
+      <div class="small muted" style="margin-top:10px">Ключ создаётся на platform.claude.com → API Keys. Он хранится только на этом телефоне и не попадает в экспорт.</div>
+    ` : `
+      <label class="f">Адрес API</label>
+      <input type="text" id="ai-base" value="${esc(c.baseUrl)}" placeholder="https://мой-сервер:11434/v1" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <label class="f">Модель</label>
+      <input type="text" id="ai-model" value="${esc(c.model)}" placeholder="hermes3" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <label class="f">Ключ доступа (если нужен)</label>
+      <input type="password" id="ai-key" value="${esc(c.apiKey)}" placeholder="необязательно" autocomplete="off">
+      <div class="small muted" style="margin-top:10px">Нужен OpenAI-совместимый API (/v1/chat/completions) по HTTPS с разрешённым CORS: Ollama, vLLM, llama.cpp, LM Studio и т.п.</div>
+    `}
+    <div class="row" style="margin-top:12px">
+      <button class="btn grow" data-act="ai-test">${ico('bolt')} Проверить связь</button>
+    </div>
+    <div class="small" id="ai-status" style="margin-top:8px"></div>
+  </div>`;
+}
+
+let ai = { phase: 'input', text: '', result: null, sel: {}, error: '' };
+let rec = null;
+
+function aiOpen() {
+  if (!AI.ready()) {
+    openSheet(`
+      <h1>ИИ ещё не подключён</h1>
+      <div class="muted">Добавь API-ключ Claude или адрес своего сервера в настройках — и рассказывай о дне голосом.</div>
+      <div class="row" style="margin-top:20px">
+        <button class="btn grow" data-act="close-sheet">Позже</button>
+        <button class="btn primary grow" data-act="ai-setup">Открыть настройки</button>
+      </div>`);
+    return;
+  }
+  ai = { ...ai, phase: 'input', result: null, error: '' };
+  aiRender();
+}
+
+function aiRender() {
+  const head = `<div class="sx" style="margin-bottom:10px">${humanDate(curDate)} · ${esc(AI.providerName())}</div>`;
+  if (ai.phase === 'input') {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    openSheet(`
+      <h1>Отчёт за день</h1>${head}
+      <textarea id="ai-text" style="min-height:150px" placeholder="Например: утром пробежал 6 км, потом 3 часа глубокой работы над проектом, вечером дочитал «Дюну» и познакомился с новым соседом.">${esc(ai.text)}</textarea>
+      <div class="row" style="margin-top:10px">
+        ${SR ? `<button class="icon-btn mic ${rec ? 'rec' : ''}" data-act="ai-mic" aria-label="Диктовка">${ico('mic')}</button>` : ''}
+        <span class="small muted grow" id="ai-mic-hint">${SR ? (rec ? 'Слушаю… нажми ещё раз, чтобы остановить' : 'Нажми на микрофон и говори') : 'Для голосового ввода нажми микрофон на клавиатуре iPhone'}</span>
+      </div>
+      <div class="row" style="margin-top:16px">
+        <button class="btn grow" data-act="close-sheet">Отмена</button>
+        <button class="btn primary grow" data-act="ai-send">${ico('bolt')} Разобрать день</button>
+      </div>`);
+  } else if (ai.phase === 'loading') {
+    openSheet(`
+      <div class="ai-loading">
+        ${reactorHTML('atom', '')}
+        <div class="t">Ядро анализирует день<span class="dots"><i>.</i><i>.</i><i>.</i></span></div>
+        <div class="small muted">${esc(AI.providerName())}</div>
+      </div>`);
+    $('#sheet-card .reactor').classList.add('fast');
+  } else if (ai.phase === 'error') {
+    openSheet(`
+      <h1>Не получилось</h1>${head}
+      <div class="card" style="border-color:rgba(255,77,109,.5)">${esc(ai.error)}</div>
+      <div class="row" style="margin-top:16px">
+        <button class="btn grow" data-act="ai-back">Назад</button>
+        <button class="btn primary grow" data-act="ai-send">Повторить</button>
+      </div>`);
+  } else if (ai.phase === 'result') {
+    openSheet(aiResultHTML(head));
+  }
+}
+
+function aiResultHTML(head) {
+  const r = ai.result;
+  const row = (key, iconHTML, title, sub, color) => `
+    <button class="ai-row ${ai.sel[key] ? 'on' : ''}" data-act="ai-toggle" data-k="${key}">
+      <span class="sico" style="color:${color}">${iconHTML}</span>
+      <span class="grow"><span class="t">${title}</span>${sub ? `<span class="s">${sub}</span>` : ''}</span>
+      <span class="ck">${ico('check')}</span>
+    </button>`;
+  const qs = r.quests.map((x) => { const q = S.quests.find((y) => y.id === x.id);
+    return row('q:' + x.id, ico(q.icon), esc(q.name) + (x.count > 1 ? ' ×' + x.count : ''), rewardsHTML(Object.fromEntries(Object.entries(q.rewards).map(([k, v]) => [k, v * x.count]))), '#ff8a5a'); }).join('');
+  const st = r.stats.map((x) => { const s = statById(x.id);
+    return row('s:' + x.id, ico(s.icon), `${esc(s.name)} <b style="color:${s.color}">${sign(x.points)}</b>`, esc(x.reason), s.color); }).join('');
+  const cs = r.counters.map((x) => { const c = counterById(x.id);
+    return row('c:' + x.id, ico(c.icon), `${esc(c.name)} <b style="color:${sphereById(c.sphere).color}">+${fmtNum(x.amount)} ${c.unit}</b>`, esc(x.reason), sphereById(c.sphere).color); }).join('');
+  const ms = r.milestones.map((x) => { const m = milestoneById(x.id);
+    return row('m:' + x.id, ico(m.icon), `Веха: ${esc(m.name)}`, esc(x.reason || m.desc), 'var(--am)'); }).join('');
+  const empty = !qs && !st && !cs && !ms;
+  return `
+    <h1>Отчёт разобран</h1>${head}
+    ${r.summary ? `<div class="card sweep ai-sum">${ico('sparkle')}<span>${esc(r.summary)}</span></div>` : ''}
+    ${qs ? `<h2>Подвиги</h2>${qs}` : ''}
+    ${st ? `<h2>Очки параметров</h2>${st}` : ''}
+    ${cs ? `<h2>Счётчики достижений</h2>${cs}` : ''}
+    ${ms ? `<h2>Вехи</h2>${ms}` : ''}
+    ${empty ? '<div class="empty">Ничего не нашлось для начисления — попробуй рассказать подробнее.</div>' : ''}
+    <h2>Заметка дня</h2>
+    <textarea id="ai-note">${esc(r.note)}</textarea>
+    <div class="row" style="margin-top:16px">
+      <button class="btn grow" data-act="ai-back">Изменить</button>
+      <button class="btn primary grow" data-act="ai-apply">${ico('bolt')} Применить</button>
+    </div>`;
+}
+
+async function aiSend() {
+  const ta = $('#ai-text');
+  if (ta) ai.text = ta.value;
+  if (!ai.text.trim()) { toast('Расскажи, что ты сделал за день'); return; }
+  micStop();
+  ai.phase = 'loading';
+  aiRender();
+  SFX.play('scan');
+  const day = getDay(curDate);
+  const already = [];
+  if (day) {
+    (day.d || []).forEach((x) => already.push('подвиг ' + x.n));
+    S.stats.forEach((st) => { if ((day.m || {})[st.id]) already.push(`${st.name} ${sign(day.m[st.id])}`); });
+    Object.entries(day.c || {}).forEach(([id, v]) => counterById(id) && already.push(`${counterById(id).name} +${v}`));
+    (day.ms || []).forEach((id) => milestoneById(id) && already.push('веха ' + milestoneById(id).name));
+  }
+  const d = parseKey(curDate);
+  try {
+    const result = await AI.analyze(S, ai.text, {
+      dateLabel: `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`,
+      already: already.join('; '),
+      unlocked: Object.keys(milestoneDates()),
+    });
+    ai.result = result;
+    ai.sel = {};
+    result.quests.forEach((x) => { ai.sel['q:' + x.id] = true; });
+    result.stats.forEach((x) => { ai.sel['s:' + x.id] = true; });
+    result.counters.forEach((x) => { ai.sel['c:' + x.id] = true; });
+    result.milestones.forEach((x) => { ai.sel['m:' + x.id] = true; });
+    ai.phase = 'result';
+    SFX.play('confirm');
+  } catch (e) {
+    ai.phase = 'error';
+    ai.error = e && e.message ? e.message : String(e);
+    SFX.play('error');
+  }
+  if (!$('#sheet').classList.contains('hidden')) aiRender();
+}
+
+function aiApply() {
+  const r = ai.result;
+  const note = ($('#ai-note') || {}).value || '';
+  const gained = {};
+  mutate(() => {
+    const day = ensureDay(curDate);
+    r.quests.forEach((x) => {
+      if (!ai.sel['q:' + x.id]) return;
+      const q = S.quests.find((y) => y.id === x.id);
+      for (let i = 0; i < x.count; i++) day.d.push({ q: q.id, n: q.name, i: q.icon, r: clone(q.rewards), c: clone(q.c || {}) });
+      Object.entries(q.rewards).forEach(([k, v]) => { gained[k] = (gained[k] || 0) + v * x.count; });
+    });
+    r.stats.forEach((x) => {
+      if (!ai.sel['s:' + x.id]) return;
+      day.m[x.id] = clamp((day.m[x.id] || 0) + x.points, -50, 99);
+      if (!day.m[x.id]) delete day.m[x.id];
+      gained[x.id] = (gained[x.id] || 0) + x.points;
+    });
+    r.counters.forEach((x) => { if (ai.sel['c:' + x.id]) day.c[x.id] = round1((day.c[x.id] || 0) + x.amount); });
+    r.milestones.forEach((x) => { if (ai.sel['m:' + x.id] && !day.ms.includes(x.id)) day.ms.push(x.id); });
+    if (note.trim()) day.note = day.note && day.note.trim() ? day.note.trim() + '\n' + note.trim() : note.trim();
+  });
+  closeSheet();
+  ai = { phase: 'input', text: '', result: null, sel: {}, error: '' };
+  SFX.play('quest');
+  const x = innerWidth / 2, y = innerHeight * 0.32;
+  burst(x, y, 14);
+  floats(x, y, Object.entries(gained).filter(([id, v]) => v && statById(id)).slice(0, 5)
+    .map(([id, v]) => ({ icon: statById(id).icon, text: sign(v), color: statById(id).color })));
+  const dt = $('#daytotal'); if (dt) dt.classList.add('bump');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// Голосовой ввод (Web Speech API), если браузер его поддерживает.
+function micToggle() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return;
+  if (rec) { micStop(); return; }
+  const ta = $('#ai-text');
+  const base = ta && ta.value.trim() ? ta.value.trim() + ' ' : '';
+  try {
+    rec = new SR();
+    rec.lang = 'ru-RU';
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.onresult = (e) => {
+      let t = '';
+      for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
+      ai.text = base + t;
+      const el = $('#ai-text'); if (el) el.value = ai.text;
+    };
+    rec.onerror = (e) => {
+      const h = $('#ai-mic-hint');
+      if (h) h.textContent = e.error === 'not-allowed' ? 'Нет доступа к микрофону — разреши его в настройках Safari' : 'Диктовка недоступна, используй микрофон на клавиатуре';
+    };
+    rec.onend = () => { rec = null; const b = $('[data-act=ai-mic]'); if (b) b.classList.remove('rec'); };
+    rec.start();
+    const b = $('[data-act=ai-mic]'); if (b) b.classList.add('rec');
+    const h = $('#ai-mic-hint'); if (h) h.textContent = 'Слушаю… нажми ещё раз, чтобы остановить';
+  } catch (e) { rec = null; }
+}
+function micStop() { if (rec) { try { rec.stop(); } catch (e) { /* ignore */ } rec = null; } }
 
 /* ---------------------- Экспорт / импорт ---------------------- */
 
@@ -854,6 +1305,7 @@ function go(t) { tab = t; render(true); window.scrollTo(0, 0); }
 document.addEventListener('click', (e) => {
   const tb = e.target.closest('#tabbar button');
   if (tb) {
+    SFX.play('tab');
     if (tb.dataset.tab === 'day') curDate = todayKey();
     go(tb.dataset.tab);
     return;
@@ -864,6 +1316,8 @@ document.addEventListener('click', (e) => {
   if (!el) return;
   const act = el.dataset.act;
   const id = el.dataset.id;
+  const snd = act in SOUND_FOR ? SOUND_FOR[act] : 'tap';
+  if (snd) SFX.play(snd);
 
   switch (act) {
     case 'go-today': curDate = todayKey(); go('day'); break;
@@ -889,7 +1343,7 @@ document.addEventListener('click', (e) => {
       const q = S.quests.find((x) => x.id === id);
       if (!q) break;
       const [x, y] = [e.clientX || centerOf(el)[0], e.clientY || centerOf(el)[1]];
-      mutate(() => { ensureDay(curDate).d.push({ q: q.id, n: q.name, i: q.icon, r: clone(q.rewards) }); });
+      mutate(() => { ensureDay(curDate).d.push({ q: q.id, n: q.name, i: q.icon, r: clone(q.rewards), c: clone(q.c || {}) }); });
       const card = $(`[data-act=quest][data-id="${id}"]`);
       if (card) { card.classList.add('hit'); }
       const dt = $('#daytotal'); if (dt) dt.classList.add('bump');
@@ -951,8 +1405,10 @@ document.addEventListener('click', (e) => {
       const icon = $('#pick-icon').value || 'bolt';
       const rewards = {};
       S.stats.forEach((s) => { const n = Number($('#qr-' + s.id).dataset.v); if (n) rewards[s.id] = n; });
-      if (id) Object.assign(S.quests.find((x) => x.id === id), { name, icon, rewards });
-      else S.quests.push({ id: uid('q'), name, icon, rewards });
+      const c = {};
+      document.querySelectorAll('#qc-list [data-qc]').forEach((row) => { const n = Number($('#qc-' + row.dataset.qc).dataset.v); if (n > 0) c[row.dataset.qc] = n; });
+      if (id) Object.assign(S.quests.find((x) => x.id === id), { name, icon, rewards, c });
+      else S.quests.push({ id: uid('q'), name, icon, rewards, c });
       save(); closeSheet(); render(false);
       break;
     }
@@ -961,6 +1417,83 @@ document.addEventListener('click', (e) => {
         S.quests = S.quests.filter((q) => q.id !== id);
         save(); closeSheet(); render(false);
       }
+      break;
+
+    case 'qc-inc':
+    case 'qc-dec': {
+      const v = $('#qc-' + id);
+      const n = clamp(Number(v.dataset.v) + (act === 'qc-inc' ? 1 : -1), 0, 100);
+      if (!n) { v.closest('[data-qc]').remove(); break; }
+      v.dataset.v = n; v.textContent = n;
+      v.classList.remove('bump'); void v.offsetWidth; v.classList.add('bump');
+      break;
+    }
+
+    /* --- Достижения --- */
+    case 'sphere':
+      achSphere = el.dataset.s;
+      render(true);
+      { const chip = $(`.spheres [data-s="${achSphere}"]`); if (chip) chip.scrollIntoView({ inline: 'center', block: 'nearest' }); }
+      break;
+    case 'counter': counterSheet(id); break;
+    case 'counter-add': {
+      let n = el.dataset.n === 'custom' ? parseFloat(($('#counter-n').value || '').replace(',', '.')) : Number(el.dataset.n);
+      if (!n || !isFinite(n)) { toast('Введи число'); break; }
+      n = clamp(round1(n), -1000, 1000);
+      const [x, y] = centerOf(el);
+      mutate(() => {
+        const day = ensureDay(todayKey());
+        day.c[id] = round1((day.c[id] || 0) + n);
+        if (day.c[id] <= 0) delete day.c[id];
+      });
+      counterSheet(id);
+      if (n > 0) { burst(x, y, 10); fx('float', x, y - 16, `color:${sphereById(counterById(id).sphere).color}`, '+' + fmtNum(n), 1200); }
+      break;
+    }
+    case 'tier': {
+      const c = counterById(id), i = Number(el.dataset.i), t = c.tiers[i];
+      toast(`«${t.title}» · ${RARITY[Math.min(i, RARITY.length - 1)].name} · ${fmtNum(t.goal)} ${c.unit}`, '', c.icon);
+      break;
+    }
+    case 'milestone': milestoneSheet(id); break;
+    case 'ms-done': {
+      closeSheet();
+      mutate(() => { const day = ensureDay(todayKey()); if (!day.ms.includes(id)) day.ms.push(id); });
+      burst(innerWidth / 2, innerHeight * 0.4, 14);
+      break;
+    }
+    case 'rm-ms':
+      if (el.dataset.sheet) closeSheet();
+      mutate(() => { for (const k in S.log) if (S.log[k].ms) S.log[k].ms = S.log[k].ms.filter((m) => m !== id); });
+      break;
+    case 'rm-counter':
+      mutate(() => { delete ensureDay(curDate).c[id]; });
+      break;
+
+    /* --- ИИ --- */
+    case 'ai-open': aiOpen(); break;
+    case 'ai-setup': closeSheet(); go('settings'); setTimeout(() => { const h = [...document.querySelectorAll('#view h2')].find((x) => x.textContent.includes('ИИ')); if (h) h.scrollIntoView({ behavior: 'smooth' }); }, 100); break;
+    case 'ai-send': aiSend(); break;
+    case 'ai-back': ai.phase = 'input'; aiRender(); break;
+    case 'ai-apply': aiApply(); break;
+    case 'ai-mic': micToggle(); break;
+    case 'ai-toggle':
+      ai.sel[el.dataset.k] = !ai.sel[el.dataset.k];
+      el.classList.toggle('on', !!ai.sel[el.dataset.k]);
+      break;
+    case 'ai-provider': AI.setCfg({ provider: el.dataset.p }); render(false); break;
+    case 'ai-test': {
+      const st = $('#ai-status');
+      st.className = 'small muted'; st.textContent = 'Проверяю…';
+      AI.test().then((msg) => { st.className = 'small ok'; st.textContent = '✓ ' + msg; SFX.play('confirm'); })
+        .catch((err) => { st.className = 'small err'; st.textContent = '✕ ' + (err.message || err); SFX.play('error'); });
+      break;
+    }
+    case 'sound':
+      S.settings.sound = !S.settings.sound;
+      SFX.enabled = S.settings.sound;
+      save(); render(false);
+      if (S.settings.sound) SFX.play('confirm');
       break;
 
     case 'export': doExport(); break;
@@ -973,7 +1506,15 @@ document.addEventListener('click', (e) => {
   }
 });
 
+const SOUND_FOR = {
+  inc: 'zap', dec: 'down', quest: 'quest', 'undo-quest': 'down', 'rm-ms': 'down', 'rm-counter': 'down',
+  'counter-add': 'zap', 'ms-done': null, 'ai-send': null, 'ai-apply': null, 'ai-test': null, sound: null, 'close-lu': 'tap',
+};
+
 document.addEventListener('input', (e) => {
+  const aiField = { 'ai-claude-key': 'claudeKey', 'ai-base': 'baseUrl', 'ai-model': 'model', 'ai-key': 'apiKey' }[e.target.id];
+  if (aiField) { AI.setCfg({ [aiField]: e.target.value }); return; }
+  if (e.target.id === 'ai-text') { ai.text = e.target.value; return; }
   if (e.target.id === 'note') {
     ensureDay(curDate).note = e.target.value;
     save();
@@ -985,6 +1526,12 @@ document.addEventListener('input', (e) => {
 document.addEventListener('change', (e) => {
   if (e.target.id === 'note') { checkAchievements(false); save(); }
   if (e.target.id === 'importfile' && e.target.files[0]) { doImport(e.target.files[0]); e.target.value = ''; }
+  if (e.target.id === 'ai-claude-model') AI.setCfg({ claudeModel: e.target.value });
+  if (e.target.id === 'qc-add' && e.target.value) {
+    const cid = e.target.value;
+    if (!$('#qc-' + cid)) $('#qc-list').insertAdjacentHTML('beforeend', qcRow(cid, 1));
+    e.target.value = '';
+  }
 });
 
 // При возвращении в приложение после полуночи — обновить «сегодня».
@@ -1000,6 +1547,7 @@ document.addEventListener('visibilitychange', () => {
 /* ---------------------- Старт ---------------------- */
 
 $('#tabbar').innerHTML = TABS.map(([k, label, icon]) => `<button data-tab="${k}">${ico(icon)}<span>${label}</span></button>`).join('');
+SFX.enabled = S.settings.sound;
 checkAchievements(true);
 save();
 render(true);
