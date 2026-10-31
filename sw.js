@@ -1,11 +1,18 @@
 // Service worker: offline-кэш. При изменении файлов увеличивай VERSION.
-const VERSION = 'lvlup-v1';
+const VERSION = 'lvlup-v2';
 const ASSETS = [
   './',
   './index.html',
   './style.css',
   './app.js',
   './manifest.webmanifest',
+  './fonts.css',
+  './fonts/Exo2-cyrillic-0.woff2',
+  './fonts/Exo2-latin-1.woff2',
+  './fonts/JetBrainsMono-cyrillic-2.woff2',
+  './fonts/JetBrainsMono-latin-3.woff2',
+  './fonts/Unbounded-cyrillic-4.woff2',
+  './fonts/Unbounded-latin-5.woff2',
   './icons/icon-180.png',
   './icons/icon-192.png',
   './icons/icon-512.png',

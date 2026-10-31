@@ -1,38 +1,100 @@
 'use strict';
 
 /* =====================================================================
-   Level Up — прокачка себя как RPG-персонажа.
+   Level Up — прокачка себя как RPG-персонажа. Тема «Алый реактор».
    Все данные хранятся локально на устройстве (localStorage).
    ===================================================================== */
 
 const STORAGE_KEY = 'lvlup.v1';
+const DATA_VERSION = 2;
+
+/* ---------------------- Иконки (SVG, 24×24, линии) ---------------------- */
+
+const ICONS = {
+  reactor: '<path d="M12 2l3 6 6 1-4.5 4 1 6.5L12 16l-5.5 3.5 1-6.5L3 9l6-1z"/><circle cx="12" cy="11.5" r="2"/>',
+  sword: '<path d="M12 2v14M8 16h8M12 16v5M10 21h4M9 5l3-3 3 3"/>',
+  swift: '<path d="M4 18l6-6-3-3 7-6M10 12l4 4 6-6M14 16l-2 5"/>',
+  shield: '<path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z M12 7v9M8.5 10.5h7"/>',
+  hex: '<path d="M12 2l9 5v10l-9 5-9-5V7z M12 7v10M7.5 9.5l9 5M16.5 9.5l-9 5"/>',
+  eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2"/>',
+  crown: '<path d="M3 18l2-11 5 5 2-8 2 8 5-5 2 11z M3 21h18"/>',
+  flame: '<path d="M12 22c4 0 7-3 7-7 0-5-4-7-5-12-2 3-3 5-3 7-1-1-2-2-2-4-2 2-4 5-4 9 0 4 3 7 7 7z"/><path d="M12 22c-2 0-3-1.5-3-3.5S11 15 12 13c1 2 3 3.5 3 5.5S14 22 12 22z"/>',
+  bolt: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
+  star: '<path d="M12 2l3 6.5 7 .8-5.2 4.8 1.5 7L12 17.6l-6.3 3.5 1.5-7L2 9.3l7-.8z"/>',
+  gem: '<path d="M6 3h12l4 6-10 12L2 9z M2 9h20 M9 3l3 6 3-6 M12 9v12"/>',
+  skull: '<path d="M12 2a8 8 0 0 0-8 8c0 3 1.5 5 3 6v3h10v-3c1.5-1 3-3 3-6a8 8 0 0 0-8-8z"/><circle cx="9" cy="11" r="1.6"/><circle cx="15" cy="11" r="1.6"/><path d="M10 19v2M14 19v2"/>',
+  claw: '<path d="M5 21c2-6 3-11 2-17 3 4 4 9 3 15M11 21c1-5 2-10 4-14 1 4 0 9-1 14M17 21c1-3 2-6 4-8"/>',
+  atom: '<circle cx="12" cy="12" r="1.5"/><ellipse cx="12" cy="12" rx="10" ry="4"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(60 12 12)"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(120 12 12)"/>',
+  moon: '<path d="M20 15A8 8 0 1 1 9 4a7 7 0 0 0 11 11z"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>',
+  dumbbell: '<path d="M6 7v10M3 9v6M18 7v10M21 9v6M6 12h12"/>',
+  wind: '<path d="M3 8h10a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h8"/>',
+  lotus: '<path d="M12 20c-4 0-8-2-9-6 3 0 6 1 9 4 3-3 6-4 9-4-1 4-5 6-9 6z"/><path d="M12 18c-2-2-3-5-3-8 1-3 3-5 3-5s2 2 3 5c0 3-1 6-3 8z"/>',
+  ball: '<circle cx="12" cy="12" r="9"/><path d="M12 7l4 3-1.5 4.5h-5L8 10z M12 3v4M16 10l4.5-1M14.5 14.5l2.5 4M9.5 14.5L7 18.5M8 10L3.5 9"/>',
+  book: '<path d="M4 4h6a3 3 0 0 1 2 1 3 3 0 0 1 2-1h6v15h-6a2 2 0 0 0-2 2 2 2 0 0 0-2-2H4z M12 5v16"/>',
+  cap: '<path d="M2 9l10-5 10 5-10 5z M6 11v5c3 2 9 2 12 0v-5 M22 9v6"/>',
+  candle: '<path d="M9 10h6v11H9z M12 10V7"/><path d="M12 7c-1.5-1-1.5-3 0-5 1.5 2 1.5 4 0 5z"/>',
+  link: '<circle cx="9" cy="12" r="5"/><circle cx="15" cy="12" r="5"/>',
+  mic: '<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8"/>',
+  leaf: '<path d="M5 19C5 10 10 5 20 4c-1 10-6 15-15 15z M5 19l8-8"/>',
+  heart: '<path d="M12 21s-8-5-8-11a4.5 4.5 0 0 1 8-3 4.5 4.5 0 0 1 8 3c0 6-8 11-8 11z"/>',
+  brush: '<path d="M14 4l6 6-9 9H5v-6z M12 6l6 6"/>',
+  note: '<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>',
+  coin: '<circle cx="12" cy="12" r="9"/><path d="M12 6v12M15 9h-4.5a1.75 1.75 0 0 0 0 3.5h3a1.75 1.75 0 0 1 0 3.5H9"/>',
+  target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
+  rocket: '<path d="M12 2c4 3 6 7 5 12l-2 3H9l-2-3C6 9 8 5 12 2z"/><circle cx="12" cy="9" r="2"/><path d="M9 17l-3 4M15 17l3 4"/>',
+  compass: '<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>',
+  scroll: '<path d="M7 3h11a2 2 0 0 1 2 2v2h-4M16 7v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2h10v2a2 2 0 0 0 2 2M7 3a2 2 0 0 0-2 2v12M9 8h4M9 12h4"/>',
+  medal: '<circle cx="12" cy="15" r="6"/><path d="M8 3l2 7M16 3l-2 7M8 3h8"/><path d="M12 12.5l.8 1.6 1.7.2-1.2 1.2.3 1.7-1.6-.8-1.6.8.3-1.7-1.2-1.2 1.7-.2z"/>',
+  balance: '<path d="M12 3v18M7 21h10M4 7h16M4 7l-3 7a3 3 0 0 0 6 0zM20 7l-3 7a3 3 0 0 0 6 0z"/>',
+  seed: '<path d="M12 21v-9M12 12C12 7 8 5 4 5c0 4 3 7 8 7zM12 10c0-4 3-6 7-6 0 4-3 6-7 6z"/>',
+  pen: '<path d="M4 20h4L19 9l-4-4L4 16z M14 6l4 4"/>',
+  home: '<path d="M3 11l9-8 9 8M5 9.5V21h14V9.5M10 21v-6h4v6"/>',
+  chart: '<path d="M3 21h18M5 17l4-6 4 3 6-9"/><circle cx="19" cy="5" r="1.5"/>',
+  trophy: '<path d="M8 3h8v5a4 4 0 0 1-8 0z M8 5H4v2a4 4 0 0 0 4 4M16 5h4v2a4 4 0 0 1-4 4M12 12v5M8 21h8M9 17h6"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>',
+  doc: '<path d="M6 2h9l4 4v16H6z M15 2v4h4 M9 11h7M9 15h7M9 19h4"/>',
+  shieldStar: '<path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"/><path d="M12 8l1.5 3 3 .4-2.2 2 .6 3L12 15l-2.9 1.4.6-3-2.2-2 3-.4z"/>',
+  upload: '<path d="M12 15V3M7 8l5-5 5 5M4 15v5h16v-5"/>',
+  download: '<path d="M12 3v12M7 10l5 5 5-5M4 15v5h16v-5"/>',
+};
+const ICON_CHOICES = ['sword', 'swift', 'shield', 'hex', 'eye', 'crown', 'flame', 'bolt', 'star', 'gem', 'atom', 'moon', 'sun',
+  'dumbbell', 'wind', 'lotus', 'ball', 'book', 'cap', 'candle', 'link', 'mic', 'leaf', 'heart', 'brush', 'note', 'coin',
+  'target', 'rocket', 'compass', 'globe', 'pen', 'home', 'skull', 'claw', 'seed'];
+const AVATAR_CHOICES = ['reactor', 'flame', 'skull', 'eye', 'crown', 'sword', 'star', 'moon', 'claw', 'atom', 'gem', 'bolt'];
+
+const ico = (k, cls = '') => ICONS[k]
+  ? `<svg class="i ${cls}" viewBox="0 0 24 24">${ICONS[k]}</svg>`
+  : `<span class="emo">${esc(k || '')}</span>`;
+
+/* ---------------------- Значения по умолчанию ---------------------- */
 
 const DEFAULT_STATS = [
-  { id: 'str', name: 'Сила',         icon: '💪', color: '#ef4444' },
-  { id: 'agi', name: 'Ловкость',     icon: '🤸', color: '#22c55e' },
-  { id: 'end', name: 'Выносливость', icon: '🫀', color: '#f97316' },
-  { id: 'int', name: 'Интеллект',    icon: '🧠', color: '#3b82f6' },
-  { id: 'wis', name: 'Мудрость',     icon: '🦉', color: '#a855f7' },
-  { id: 'cha', name: 'Харизма',      icon: '✨', color: '#eab308' },
+  { id: 'str', name: 'Сила',         icon: 'sword',  color: '#ff2340' },
+  { id: 'agi', name: 'Ловкость',     icon: 'swift',  color: '#ffc23d' },
+  { id: 'end', name: 'Выносливость', icon: 'shield', color: '#ff7a1a' },
+  { id: 'int', name: 'Интеллект',    icon: 'hex',    color: '#ff5c8a' },
+  { id: 'wis', name: 'Мудрость',     icon: 'eye',    color: '#ffcfa3' },
+  { id: 'cha', name: 'Харизма',      icon: 'crown',  color: '#ff3dbb' },
 ];
 
 const DEFAULT_QUESTS = [
-  { id: 'q_gym',   name: 'Силовая тренировка',     icon: '🏋️', rewards: { str: 3, end: 1 } },
-  { id: 'q_run',   name: 'Пробежка / кардио',      icon: '🏃', rewards: { end: 3, agi: 1 } },
-  { id: 'q_yoga',  name: 'Растяжка / йога',        icon: '🧘', rewards: { agi: 2, wis: 1 } },
-  { id: 'q_sport', name: 'Игровой спорт / танцы',  icon: '⚽', rewards: { agi: 3, cha: 1 } },
-  { id: 'q_read',  name: 'Чтение 30 минут',        icon: '📚', rewards: { int: 2, wis: 1 } },
-  { id: 'q_learn', name: 'Учёба / новый навык',    icon: '🎓', rewards: { int: 3 } },
-  { id: 'q_med',   name: 'Медитация / дневник',    icon: '🕯️', rewards: { wis: 2 } },
-  { id: 'q_meet',  name: 'Новое знакомство',       icon: '🤝', rewards: { cha: 3 } },
-  { id: 'q_talk',  name: 'Выступил / сложный разговор', icon: '🎤', rewards: { cha: 2, wis: 1 } },
-  { id: 'q_sleep', name: 'Сон 7–8 часов',          icon: '😴', rewards: { end: 1, wis: 1 } },
-  { id: 'q_food',  name: 'Без сладкого и фастфуда', icon: '🥗', rewards: { end: 1, wis: 1 } },
-  { id: 'q_help',  name: 'Помог кому-то',          icon: '💝', rewards: { cha: 2, wis: 1 } },
+  { id: 'q_gym',   name: 'Силовая тренировка',          icon: 'dumbbell', rewards: { str: 3, end: 1 } },
+  { id: 'q_run',   name: 'Пробежка / кардио',           icon: 'wind',     rewards: { end: 3, agi: 1 } },
+  { id: 'q_yoga',  name: 'Растяжка / йога',             icon: 'lotus',    rewards: { agi: 2, wis: 1 } },
+  { id: 'q_sport', name: 'Игровой спорт / танцы',       icon: 'ball',     rewards: { agi: 3, cha: 1 } },
+  { id: 'q_read',  name: 'Чтение 30 минут',             icon: 'book',     rewards: { int: 2, wis: 1 } },
+  { id: 'q_learn', name: 'Учёба / новый навык',         icon: 'cap',      rewards: { int: 3 } },
+  { id: 'q_med',   name: 'Медитация / дневник',         icon: 'candle',   rewards: { wis: 2 } },
+  { id: 'q_meet',  name: 'Новое знакомство',            icon: 'link',     rewards: { cha: 3 } },
+  { id: 'q_talk',  name: 'Выступил / сложный разговор', icon: 'mic',      rewards: { cha: 2, wis: 1 } },
+  { id: 'q_sleep', name: 'Сон 7–8 часов',               icon: 'moon',     rewards: { end: 1, wis: 1 } },
+  { id: 'q_food',  name: 'Без сладкого и фастфуда',     icon: 'leaf',     rewards: { end: 1, wis: 1 } },
+  { id: 'q_help',  name: 'Помог кому-то',               icon: 'heart',    rewards: { cha: 2, wis: 1 } },
 ];
 
-const AVATARS = ['🧙‍♂️', '🧙‍♀️', '🥷', '🧝‍♂️', '🧝‍♀️', '🦸‍♂️', '🦸‍♀️', '🧛', '🤴', '👸', '🐉', '🦊', '🐺', '🦁', '🐼', '🤖', '👾', '🧑‍🚀'];
-const COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#14b8a6', '#06b6d4', '#3b82f6', '#6366f1', '#a855f7', '#ec4899', '#f43f5e', '#94a3b8'];
+const COLORS = ['#ff2340', '#ff3dbb', '#ff5c8a', '#ff7a1a', '#ffc23d', '#ffcfa3', '#ffe36b', '#b98cff', '#5ad1ff', '#5dffb0'];
 
 const TITLES = [
   [1, 'Новичок'], [3, 'Ученик'], [5, 'Искатель'], [8, 'Странник'], [12, 'Воин'],
@@ -47,6 +109,8 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
 const uid = (p) => p + '_' + Math.random().toString(36).slice(2, 9);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const pad = (n) => String(n).padStart(2, '0');
+const sign = (n) => (n > 0 ? '+' + n : String(n));
+const fmt = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
 function dateKey(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
 function parseKey(k) { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); }
@@ -68,14 +132,14 @@ function humanDate(k) {
   if (k === addDays(t, -1)) return 'Вчера, ' + base;
   return WD[d.getDay()] + ', ' + base + (d.getFullYear() !== new Date().getFullYear() ? ' ' + d.getFullYear() : '');
 }
-const sign = (n) => (n > 0 ? '+' + n : String(n));
+function shortDate(k) { const d = parseKey(k); return d.getDate() + ' ' + MONTHS[d.getMonth()]; }
 
 /* ---------------------- Состояние ---------------------- */
 
 function defaultState() {
   return {
-    v: 1,
-    profile: { name: 'Герой', avatar: '🧙‍♂️' },
+    v: DATA_VERSION,
+    profile: { name: 'Герой', avatar: 'reactor' },
     stats: clone(DEFAULT_STATS),
     quests: clone(DEFAULT_QUESTS),
     log: {},   // 'YYYY-MM-DD' -> { m: {statId: n}, d: [{q, n, i, r}], note }
@@ -84,11 +148,36 @@ function defaultState() {
   };
 }
 
+// Перенос данных версии 1 (эмодзи и старые цвета) в новую тему.
+const EMOJI_TO_ICON = {
+  '💪': 'sword', '🤸': 'swift', '🫀': 'shield', '🧠': 'hex', '🦉': 'eye', '✨': 'crown',
+  '🏋️': 'dumbbell', '🏃': 'wind', '🧘': 'lotus', '⚽': 'ball', '📚': 'book', '🎓': 'cap', '🕯️': 'candle',
+  '🤝': 'link', '🎤': 'mic', '😴': 'moon', '🥗': 'leaf', '💝': 'heart', '⭐': 'star', '⚡': 'bolt', '🎨': 'brush',
+};
+const OLD_COLORS = { str: '#ef4444', agi: '#22c55e', end: '#f97316', int: '#3b82f6', wis: '#a855f7', cha: '#eab308' };
+function migrate(s) {
+  if ((s.v || 1) >= DATA_VERSION) return s;
+  const mapIcon = (i) => EMOJI_TO_ICON[i] || i;
+  for (const st of s.stats || []) {
+    st.icon = mapIcon(st.icon);
+    const def = DEFAULT_STATS.find((d) => d.id === st.id);
+    if (def && st.color === OLD_COLORS[st.id]) st.color = def.color;
+  }
+  for (const q of s.quests || []) q.icon = mapIcon(q.icon);
+  for (const k in s.log || {}) for (const x of s.log[k].d || []) x.i = mapIcon(x.i);
+  if (s.profile && !ICONS[s.profile.avatar]) s.profile.avatar = 'reactor';
+  s.v = DATA_VERSION;
+  return s;
+}
+
+// Данные без номера версии считаем версией 1.
+function hydrate(obj) { return migrate(Object.assign(defaultState(), obj, { v: obj.v || 1 })); }
+
 function load() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return defaultState();
-    return Object.assign(defaultState(), JSON.parse(raw));
+    return hydrate(JSON.parse(raw));
   } catch (e) {
     return defaultState();
   }
@@ -97,12 +186,12 @@ function load() {
 let S = load();
 function save() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(S)); }
-  catch (e) { toast('⚠️ Не удалось сохранить данные'); }
+  catch (e) { toast('Не удалось сохранить данные', '', 'bolt'); }
 }
 
 /* ---------------------- Игровая математика ---------------------- */
 
-// Уровень L → L+1 требует k*L опыта. Для параметра k = 10, для персонажа k = 5 * число параметров.
+// Уровень L → L+1 требует k*L опыта. Для параметра k = 10, для персонажа k = 5 × число параметров.
 function levelInfo(xp, k) {
   xp = Math.max(0, xp);
   let L = 1, base = 0;
@@ -166,7 +255,6 @@ function titleFor(level) {
   return t;
 }
 
-// Снимок уровней — чтобы поймать момент повышения.
 function snapshot() {
   const xp = statXP();
   const lv = {};
@@ -191,28 +279,28 @@ function achievementDefs() {
     if (d.note && d.note.trim()) notes++;
     bigDay = Math.max(bigDay, dayTotal(d));
   }
-  const p = (v, goal) => ({ ok: v >= goal, prog: Math.min(v, goal) + ' / ' + goal });
+  const p = (v, goal) => ({ ok: v >= goal, v: Math.min(v, goal), goal });
   return [
-    { id: 'first',   icon: '🌱', name: 'Первый шаг',      desc: 'Подвести итоги первого дня', ...p(days, 1) },
-    { id: 's3',      icon: '🔥', name: 'Разогрев',        desc: 'Серия 3 дня подряд',  ...p(best, 3) },
-    { id: 's7',      icon: '📅', name: 'Неделя силы воли', desc: 'Серия 7 дней подряд', ...p(best, 7) },
-    { id: 's30',     icon: '🗓️', name: 'Железная привычка', desc: 'Серия 30 дней подряд', ...p(best, 30) },
-    { id: 's100',    icon: '💎', name: 'Несокрушимый',    desc: 'Серия 100 дней подряд', ...p(best, 100) },
-    { id: 'd10',     icon: '🎒', name: 'В пути',          desc: '10 дней с прогрессом', ...p(days, 10) },
-    { id: 'd50',     icon: '🧭', name: 'Путешественник',  desc: '50 дней с прогрессом', ...p(days, 50) },
-    { id: 'd365',    icon: '🌍', name: 'Год приключений', desc: '365 дней с прогрессом', ...p(days, 365) },
-    { id: 'st5',     icon: '⭐', name: 'Специалист',      desc: 'Любой параметр 5 уровня', ...p(maxLvl, 5) },
-    { id: 'st10',    icon: '🌟', name: 'Эксперт',         desc: 'Любой параметр 10 уровня', ...p(maxLvl, 10) },
-    { id: 'st20',    icon: '👑', name: 'Грандмастер',     desc: 'Любой параметр 20 уровня', ...p(maxLvl, 20) },
-    { id: 'bal3',    icon: '⚖️', name: 'Гармония',        desc: 'Все параметры от 3 уровня', ...p(minLvl, 3) },
-    { id: 'bal7',    icon: '☯️', name: 'Универсал',       desc: 'Все параметры от 7 уровня', ...p(minLvl, 7) },
-    { id: 'c5',      icon: '🛡️', name: 'Закалённый',      desc: 'Персонаж 5 уровня', ...p(charLvl, 5) },
-    { id: 'c10',     icon: '⚔️', name: 'Воин',            desc: 'Персонаж 10 уровня', ...p(charLvl, 10) },
-    { id: 'c25',     icon: '🐉', name: 'Герой',           desc: 'Персонаж 25 уровня', ...p(charLvl, 25) },
-    { id: 'big',     icon: '🚀', name: 'Продуктивный день', desc: 'Набрать 25+ очков за день', ...p(bigDay, 25) },
-    { id: 'q50',     icon: '📜', name: 'Охотник за подвигами', desc: 'Выполнить 50 подвигов', ...p(quests, 50) },
-    { id: 'q300',    icon: '🏅', name: 'Легенда подвигов', desc: 'Выполнить 300 подвигов', ...p(quests, 300) },
-    { id: 'n10',     icon: '✍️', name: 'Летописец',       desc: 'Оставить 10 заметок дня', ...p(notes, 10) },
+    { id: 'first', icon: 'seed',    name: 'Первый шаг',          desc: 'Подвести итоги первого дня', ...p(days, 1) },
+    { id: 's3',    icon: 'flame',   name: 'Разогрев',            desc: 'Серия 3 дня подряд', ...p(best, 3) },
+    { id: 's7',    icon: 'bolt',    name: 'Неделя силы воли',    desc: 'Серия 7 дней подряд', ...p(best, 7) },
+    { id: 's30',   icon: 'shield',  name: 'Железная привычка',   desc: 'Серия 30 дней подряд', ...p(best, 30) },
+    { id: 's100',  icon: 'gem',     name: 'Несокрушимый',        desc: 'Серия 100 дней подряд', ...p(best, 100) },
+    { id: 'd10',   icon: 'compass', name: 'В пути',              desc: '10 дней с прогрессом', ...p(days, 10) },
+    { id: 'd50',   icon: 'target',  name: 'Путешественник',      desc: '50 дней с прогрессом', ...p(days, 50) },
+    { id: 'd365',  icon: 'globe',   name: 'Год приключений',     desc: '365 дней с прогрессом', ...p(days, 365) },
+    { id: 'st5',   icon: 'star',    name: 'Специалист',          desc: 'Любой параметр 5 уровня', ...p(maxLvl, 5) },
+    { id: 'st10',  icon: 'atom',    name: 'Эксперт',             desc: 'Любой параметр 10 уровня', ...p(maxLvl, 10) },
+    { id: 'st20',  icon: 'crown',   name: 'Грандмастер',         desc: 'Любой параметр 20 уровня', ...p(maxLvl, 20) },
+    { id: 'bal3',  icon: 'balance', name: 'Гармония',            desc: 'Все параметры от 3 уровня', ...p(minLvl, 3) },
+    { id: 'bal7',  icon: 'hex',     name: 'Универсал',           desc: 'Все параметры от 7 уровня', ...p(minLvl, 7) },
+    { id: 'c5',    icon: 'sword',   name: 'Закалённый',          desc: 'Персонаж 5 уровня', ...p(charLvl, 5) },
+    { id: 'c10',   icon: 'claw',    name: 'Воин',                desc: 'Персонаж 10 уровня', ...p(charLvl, 10) },
+    { id: 'c25',   icon: 'reactor', name: 'Герой',               desc: 'Персонаж 25 уровня', ...p(charLvl, 25) },
+    { id: 'big',   icon: 'rocket',  name: 'Продуктивный день',   desc: 'Набрать 25+ очков за день', ...p(bigDay, 25) },
+    { id: 'q50',   icon: 'scroll',  name: 'Охотник за подвигами', desc: 'Выполнить 50 подвигов', ...p(quests, 50) },
+    { id: 'q300',  icon: 'medal',   name: 'Легенда подвигов',    desc: 'Выполнить 300 подвигов', ...p(quests, 300) },
+    { id: 'n10',   icon: 'pen',     name: 'Летописец',           desc: 'Оставить 10 заметок дня', ...p(notes, 10) },
   ];
 }
 
@@ -220,12 +308,14 @@ function checkAchievements(silent) {
   for (const a of achievementDefs()) {
     if (a.ok && !S.ach[a.id]) {
       S.ach[a.id] = todayKey();
-      if (!silent) toast('🏆 Достижение: ' + a.icon + ' ' + a.name, 'gold');
+      if (!silent) toast('Достижение: ' + a.name, 'gold', a.icon);
     }
   }
 }
 
 /* ---------------------- Изменения с отслеживанием уровня ---------------------- */
+
+let afterRender = [];   // эффекты, которые нужно применить к свежему DOM
 
 function mutate(fn) {
   const before = snapshot();
@@ -234,42 +324,89 @@ function mutate(fn) {
   const after = snapshot();
   const ups = [];
   for (const st of S.stats) {
-    if ((after.lv[st.id] || 1) > (before.lv[st.id] || 1)) ups.push(st.icon + ' ' + esc(st.name) + ' → ' + after.lv[st.id] + ' ур.');
+    const a = before.lv[st.id] || 1, b = after.lv[st.id] || 1;
+    if (b > a) ups.push({ st, from: a, to: b });
   }
-  const charUp = after.char > before.char;
+  const charUp = after.char > before.char ? after.char : 0;
   checkAchievements(false);
   save();
-  if (ups.length || charUp) celebrate(ups, charUp ? after.char : 0);
-  render();
+  render(false);
+  if (ups.length || charUp) setTimeout(() => celebrate(ups, charUp), 450);
 }
 
-/* ---------------------- UI-помощники ---------------------- */
+/* ---------------------- Эффекты ---------------------- */
 
-function toast(text, cls = '') {
+function fx(cls, x, y, style = '', html = '', life = 1200) {
+  const el = document.createElement('div');
+  el.className = 'fx ' + cls;
+  el.style.cssText = `left:${x}px;top:${y}px;${style}`;
+  el.innerHTML = html;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), life);
+  return el;
+}
+function burst(x, y, n = 10) {
+  fx('shock', x, y, '', '', 700);
+  for (let i = 0; i < n; i++) {
+    const a = (360 / n) * i + Math.random() * 20;
+    fx('spark', x, y, `--a:${a}deg;--d:${30 + Math.random() * 30}px`, '', 650);
+  }
+}
+function floats(x, y, items) {
+  items.forEach((it, i) => {
+    const dx = (i - (items.length - 1) / 2) * 62;
+    setTimeout(() => fx('float', x + dx, y, `color:${it.color}`, `${it.icon ? ico(it.icon) : ''}${esc(it.text)}`, 1250), i * 110);
+  });
+}
+function centerOf(el) { const r = el.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; }
+
+function toast(text, cls = '', icon = 'bolt') {
   const el = document.createElement('div');
   el.className = 'toast ' + cls;
-  el.textContent = text;
+  el.innerHTML = ico(icon) + `<span>${esc(text)}</span>`;
   $('#toasts').appendChild(el);
-  setTimeout(() => { el.style.transition = 'opacity .4s'; el.style.opacity = '0'; }, 2400);
-  setTimeout(() => el.remove(), 2900);
+  setTimeout(() => el.classList.add('out'), 2600);
+  setTimeout(() => el.remove(), 3000);
+}
+
+function reactorHTML(icon, lvlText) {
+  let ticks = '';
+  for (let i = 0; i < 36; i++) {
+    const a = i * Math.PI / 18, r1 = 43, r2 = i % 3 ? 44.5 : 47;
+    ticks += `<line x1="${(48 + Math.cos(a) * r1).toFixed(2)}" y1="${(48 + Math.sin(a) * r1).toFixed(2)}" x2="${(48 + Math.cos(a) * r2).toFixed(2)}" y2="${(48 + Math.sin(a) * r2).toFixed(2)}" stroke="#ffb020" stroke-width=".6" opacity=".8"/>`;
+  }
+  return `
+    <div class="reactor">
+      <svg class="ring r3" viewBox="0 0 96 96"><circle cx="48" cy="48" r="46" fill="none" stroke="#ff1f3d" stroke-width=".8" stroke-dasharray="1 3"/>${ticks}</svg>
+      <svg class="ring r1" viewBox="0 0 96 96"><circle cx="48" cy="48" r="40" fill="none" stroke="#ff7a1a" stroke-width="1.6" stroke-dasharray="30 8 4 8"/></svg>
+      <svg class="ring r2" viewBox="0 0 96 96"><circle cx="48" cy="48" r="32" fill="none" stroke="#ff1f3d" stroke-width="1" stroke-dasharray="60 6 2 6"/></svg>
+      <div class="core">${ico(icon)}</div>
+      ${lvlText ? `<div class="lvl">${lvlText}</div>` : ''}
+    </div>`;
 }
 
 function celebrate(ups, charLvl) {
-  const el = $('#celebrate');
-  const colors = ['#ffcf4a', '#8b7bff', '#5ee0c4', '#ff6b6b', '#4ade80', '#ffffff'];
-  let conf = '';
-  for (let i = 0; i < 60; i++) {
-    conf += `<i class="confetti" style="left:${Math.random() * 100}%;background:${colors[i % colors.length]};animation-duration:${1.6 + Math.random() * 1.8}s;animation-delay:${Math.random() * 0.5}s"></i>`;
+  const el = document.createElement('div');
+  el.className = 'lu';
+  let sparks = '';
+  for (let i = 0; i < 56; i++) {
+    sparks += `<b style="--a:${Math.random() * 360}deg;--d:${120 + Math.random() * 200}px;--t:${.7 + Math.random() * .7}s;--dl:${Math.random() * .25}s"></b>`;
   }
-  el.innerHTML = conf + `
+  const rows = ups.map((u, i) => `
+    <div style="color:${u.st.color};animation-delay:${.7 + i * .12}s">${ico(u.st.icon)}<span style="color:var(--text)">${esc(u.st.name)}</span>
+      <span class="mono" style="color:var(--muted)">${u.from}</span><span class="arrow">→</span><span>${u.to}</span></div>`).join('');
+  el.innerHTML = `
+    <div class="flash"></div>
+    <div class="wave"></div><div class="wave"></div><div class="wave"></div>
+    <div class="sparks">${sparks}</div>
     <div class="box">
-      <div class="big">${charLvl ? '👑' : '⬆️'}</div>
-      <div class="t">${charLvl ? 'НОВЫЙ УРОВЕНЬ!' : 'ПРОКАЧКА!'}</div>
-      ${charLvl ? `<div>Персонаж достиг <b>${charLvl} уровня</b><br><span class="hero-title">${titleFor(charLvl)}</span></div>` : ''}
-      <div class="ups">${ups.map((u) => `<div>${u}</div>`).join('')}</div>
-      <button class="btn primary block" data-act="close-celebrate">Отлично!</button>
+      ${reactorHTML(S.profile.avatar, '')}
+      <div class="t">${charLvl ? 'ПЕРЕГРУЗКА ЯДРА' : 'ПРОКАЧКА'}</div>
+      ${charLvl ? `<div class="lv">${charLvl}</div><div class="lt">уровень · ${titleFor(charLvl)}</div>` : ''}
+      ${rows ? `<div class="ups">${rows}</div>` : '<div style="height:16px"></div>'}
+      <button class="btn primary block" data-act="close-lu">Принять силу</button>
     </div>`;
-  el.classList.remove('hidden');
+  document.body.appendChild(el);
 }
 
 function openSheet(html) {
@@ -279,10 +416,13 @@ function openSheet(html) {
 function closeSheet() { $('#sheet').classList.add('hidden'); $('#sheet-card').innerHTML = ''; }
 
 function statById(id) { return S.stats.find((s) => s.id === id); }
-function rewardsText(r) {
-  return Object.entries(r).filter(([id, v]) => v && statById(id))
-    .map(([id, v]) => statById(id).icon + ' ' + sign(v)).join('  ') || 'без наград';
+function rewardsHTML(r) {
+  const parts = Object.entries(r).filter(([id, v]) => v && statById(id))
+    .map(([id, v]) => { const s = statById(id); return `<span style="color:${s.color}">${ico(s.icon)}${sign(v)}</span>`; });
+  return parts.join('') || '<span>без наград</span>';
 }
+const barHTML = (key, pct, color) =>
+  `<div class="bar"><i data-bar="${key}" data-w="${(clamp(pct, 0, 1) * 100).toFixed(1)}" style="--c:${color};background:linear-gradient(90deg,${color}99,${color})"></i></div>`;
 
 /* ---------------------- Экраны ---------------------- */
 
@@ -290,10 +430,26 @@ let tab = 'hero';
 let curDate = todayKey();
 let histRange = 30;
 
-function render() {
+const TABS = [['hero', 'Герой', 'shieldStar'], ['day', 'Итоги', 'doc'], ['history', 'История', 'chart'], ['ach', 'Награды', 'trophy'], ['settings', 'Ещё', 'gear']];
+
+function render(enter) {
   document.querySelectorAll('#tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   const v = $('#view');
+  const prev = {};
+  v.querySelectorAll('[data-bar]').forEach((el) => { prev[el.dataset.bar] = el.style.width; });
+
+  v.classList.remove('enter');
   v.innerHTML = ({ hero: viewHero, day: viewDay, history: viewHistory, ach: viewAch, settings: viewSettings }[tab])();
+  if (enter) { void v.offsetWidth; v.classList.add('enter'); }
+
+  // Шкалы плавно доезжают от прошлого значения (или от нуля при входе на экран).
+  const bars = v.querySelectorAll('[data-bar]');
+  bars.forEach((el) => { el.style.width = enter ? '0%' : (prev[el.dataset.bar] || el.dataset.w + '%'); });
+  void v.offsetWidth;
+  requestAnimationFrame(() => setTimeout(() => bars.forEach((el) => { el.style.width = el.dataset.w + '%'; }), enter ? 180 : 0));
+
+  afterRender.forEach((f) => f(v));
+  afterRender = [];
 }
 
 function radarSVG(xp) {
@@ -301,77 +457,87 @@ function radarSVG(xp) {
   if (n < 3) return '';
   const levels = S.stats.map((s) => levelInfo(xp[s.id], STAT_K).level);
   const max = Math.max(5, ...levels);
-  const cx = 160, cy = 150, R = 105;
-  const pt = (i, r) => {
-    const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
-    return [cx + Math.cos(a) * r, cy + Math.sin(a) * r];
-  };
-  let g = '';
-  for (let ring = 1; ring <= 4; ring++) {
-    const pts = S.stats.map((_, i) => pt(i, (R * ring) / 4).join(',')).join(' ');
-    g += `<polygon points="${pts}" fill="none" stroke="rgba(255,255,255,.08)" />`;
-  }
-  S.stats.forEach((_, i) => { const [x, y] = pt(i, R); g += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="rgba(255,255,255,.08)"/>`; });
-  const poly = levels.map((l, i) => pt(i, R * Math.max(0.06, l / max)).join(',')).join(' ');
-  g += `<polygon points="${poly}" fill="rgba(139,123,255,.35)" stroke="#8b7bff" stroke-width="2" stroke-linejoin="round"/>`;
-  levels.forEach((l, i) => { const [x, y] = pt(i, R * Math.max(0.06, l / max)); g += `<circle cx="${x}" cy="${y}" r="4" fill="${S.stats[i].color}"/>`; });
+  const cx = 170, cy = 142, R = 90;
+  const pt = (i, r) => { const a = -Math.PI / 2 + (i * 2 * Math.PI) / n; return [cx + Math.cos(a) * r, cy + Math.sin(a) * r]; };
+  const f = (v) => v.toFixed(1);
+  let g = `<defs>
+    <radialGradient id="rf"><stop offset="0" stop-color="#ff7a1a" stop-opacity=".55"/><stop offset="1" stop-color="#ff1f3d" stop-opacity=".18"/></radialGradient>
+    <filter id="rglow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="iglow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>`;
+  for (let k = 1; k <= 4; k++) g += `<circle cx="${cx}" cy="${cy}" r="${R * k / 4}" fill="none" stroke="rgba(255,60,40,.22)"/>`;
+  S.stats.forEach((_, i) => { const [x, y] = pt(i, R); g += `<line x1="${cx}" y1="${cy}" x2="${f(x)}" y2="${f(y)}" stroke="rgba(255,60,40,.22)"/>`; });
+  const pts = levels.map((l, i) => pt(i, R * Math.max(0.07, l / max)).map(f).join(',')).join(' ');
+  g += `<polygon class="fillp" points="${pts}" fill="url(#rf)"/>`;
+  g += `<polygon class="shape" pathLength="1" points="${pts}" fill="none" stroke="#ff5a2a" stroke-width="2.5" stroke-linejoin="round" filter="url(#rglow)"/>`;
+  g += `<polygon class="shape" pathLength="1" points="${pts}" fill="none" stroke="#fff3e6" stroke-width="1" stroke-linejoin="round"/>`;
+  levels.forEach((l, i) => {
+    const [x, y] = pt(i, R * Math.max(0.07, l / max));
+    g += `<circle class="pt" cx="${f(x)}" cy="${f(y)}" r="3.5" fill="#fff" stroke="${S.stats[i].color}" stroke-width="2" filter="url(#iglow)" style="transform-box:fill-box;transform-origin:center;animation-delay:${.9 + i * .06}s"/>`;
+  });
   S.stats.forEach((s, i) => {
     const [x, y] = pt(i, R + 26);
-    g += `<text x="${x}" y="${y - 2}" text-anchor="middle" font-size="18">${esc(s.icon)}</text>`;
-    g += `<text x="${x}" y="${y + 15}" text-anchor="middle" font-size="12" font-weight="700" fill="#9aa0c8">${levels[i]}</text>`;
+    const icon = ICONS[s.icon]
+      ? `<svg x="${f(x - 10)}" y="${f(y - 17)}" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${s.color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" filter="url(#iglow)">${ICONS[s.icon]}</svg>`
+      : `<text x="${f(x)}" y="${f(y - 2)}" text-anchor="middle" font-size="17">${esc(s.icon)}</text>`;
+    g += icon + `<text x="${f(x)}" y="${f(y + 16)}" text-anchor="middle" font-size="12" font-weight="700" fill="#ffe2c4" style="font-family:Unbounded,sans-serif">${levels[i]}</text>`;
   });
-  return `<svg class="radar" viewBox="0 0 320 300">${g}</svg>`;
+  return `<svg class="radar" viewBox="0 0 340 288">${g}</svg>`;
 }
 
 function viewHero() {
   const xp = statXP();
   const total = totalXP(xp);
   const ch = levelInfo(total, charK());
-  const today = dayPoints(getDay(todayKey()));
+  const tday = getDay(todayKey());
+  const today = dayPoints(tday);
   const streak = currentStreak();
-  const todayDone = isActive(getDay(todayKey()));
+  const todayDone = isActive(tday);
 
   const stats = S.stats.map((s) => {
     const li = levelInfo(xp[s.id], STAT_K);
     const t = today[s.id] || 0;
     return `
       <div class="card stat">
-        <div class="stat-ico" style="background:${s.color}22;border:1px solid ${s.color}55">${esc(s.icon)}</div>
+        <div class="sico" style="color:${s.color}">${ico(s.icon)}</div>
         <div class="grow">
           <div class="row between">
-            <span class="stat-name">${esc(s.name)}</span>
+            <span class="sn">${esc(s.name)}</span>
             <span class="row" style="gap:8px">
-              ${t ? `<span class="${t > 0 ? 'today-plus' : 'today-minus'}">${sign(t)} сегодня</span>` : ''}
-              <span class="stat-lvl" style="color:${s.color}">Ур. ${li.level}</span>
+              ${t ? `<span class="${t > 0 ? 'today-plus' : 'today-minus'}">${sign(t)}</span>` : ''}
+              <span class="sl" style="color:${s.color}">УР. ${li.level}</span>
             </span>
           </div>
-          <div class="bar thin" style="margin-top:8px"><i style="width:${li.pct * 100}%;background:${s.color}"></i></div>
-          <div class="small muted" style="margin-top:4px">${li.into} / ${li.need} XP · всего ${xp[s.id]}</div>
+          ${barHTML('st-' + s.id, li.pct, s.color)}
+          <div class="sx">${li.into} / ${li.need} XP · всего ${fmt(xp[s.id])}</div>
         </div>
       </div>`;
   }).join('');
 
   return `
-    <div class="card">
-      <div class="hero-head">
-        <div class="avatar">${esc(S.profile.avatar)}<span class="lvl">${ch.level}</span></div>
-        <div class="grow">
-          <div class="hero-name">${esc(S.profile.name)}</div>
-          <div class="hero-title">${titleFor(ch.level)} · ${ch.level} уровень</div>
-          <div class="bar" style="margin-top:10px"><i style="width:${ch.pct * 100}%"></i></div>
-          <div class="small muted" style="margin-top:4px">${ch.into} / ${ch.need} XP до ${ch.level + 1} уровня</div>
+    <div class="sub"><span class="dot"></span>reactor core · online</div>
+    <div class="card sweep">
+      <div class="hero">
+        ${reactorHTML(S.profile.avatar, 'LVL ' + ch.level)}
+        <div class="hero-name">${esc(S.profile.name)}</div>
+        <div class="hero-title">${titleFor(ch.level)} · ${ch.level} уровень</div>
+        <div class="xpwrap">
+          ${barHTML('char', ch.pct, '#ff4a2a')}
+          <div class="xpt">${ch.into} / ${ch.need} XP → ${ch.level + 1} уровень</div>
         </div>
       </div>
       <div class="kpis">
-        <div class="kpi"><b>${streak ? '🔥 ' : ''}${streak}</b><span>${plural(streak, 'день', 'дня', 'дней')} подряд</span></div>
-        <div class="kpi"><b>${total}</b><span>всего XP</span></div>
-        <div class="kpi"><b>${Object.keys(S.ach).length}</b><span>наград</span></div>
+        <div class="kpi"><b>${streak}</b><span>${plural(streak, 'день', 'дня', 'дней')} подряд</span></div>
+        <div class="kpi"><b>${fmt(total)}</b><span>энергия</span></div>
+        <div class="kpi"><b>${Object.keys(S.ach).length}</b><span>награды</span></div>
       </div>
     </div>
-    ${todayDone ? '' : `<button class="btn primary block" data-act="go-today" style="margin:4px 0 10px">📝 Подвести итоги дня</button>`}
-    ${S.stats.length >= 3 ? `<div class="card">${radarSVG(xp)}</div>` : ''}
+    ${todayDone
+      ? `<button class="cta done" data-act="go-today">${ico('bolt')} Ядро заряжено · ${sign(dayTotal(tday))} XP</button>`
+      : `<button class="cta" data-act="go-today">${ico('doc')} Зарядить ядро</button>`}
+    ${S.stats.length >= 3 ? `<div class="card" style="padding:8px 6px 4px">${radarSVG(xp)}</div>` : ''}
     <h2>Параметры</h2>
-    ${stats || `<div class="empty"><div class="e">🫥</div>Добавь параметры в разделе «Ещё»</div>`}
+    ${stats || `<div class="empty">${ico('hex')}<div>Добавь параметры в разделе «Ещё»</div></div>`}
   `;
 }
 
@@ -383,54 +549,50 @@ function viewDay() {
   const counts = {};
   (day.d || []).forEach((x) => { counts[x.q] = (counts[x.q] || 0) + 1; });
 
+  const quests = S.quests.map((q) => `
+    <button class="quest ${counts[q.id] ? 'done' : ''}" data-act="quest" data-id="${q.id}">
+      ${counts[q.id] ? `<span class="qc">${counts[q.id] > 1 ? '×' + counts[q.id] : '✓'}</span>` : ''}
+      <span class="qi">${ico(q.icon)}</span>
+      <span class="qn">${esc(q.name)}</span>
+      <span class="qr">${rewardsHTML(q.rewards)}</span>
+    </button>`).join('');
+
+  const done = (day.d || []).map((x, i) => `
+    <div class="done-item">
+      <span class="qi">${ico(x.i)}</span>
+      <div class="grow"><div style="font-weight:600;font-size:14px">${esc(x.n)}</div><span class="qr" style="margin-top:3px">${rewardsHTML(x.r)}</span></div>
+      <button class="icon-btn" data-act="undo-quest" data-idx="${i}" aria-label="Отменить">✕</button>
+    </div>`).join('');
+
   const rows = S.stats.map((s) => {
     const v = pts[s.id] || 0;
     return `
-      <div class="card stat">
-        <div class="stat-ico" style="background:${s.color}22;border:1px solid ${s.color}55">${esc(s.icon)}</div>
-        <div class="grow"><div class="stat-name">${esc(s.name)}</div></div>
+      <div class="card stat compact">
+        <div class="sico" style="color:${s.color}">${ico(s.icon)}</div>
+        <div class="grow"><div class="sn">${esc(s.name)}</div></div>
         <div class="stepper">
           <button class="icon-btn" data-act="dec" data-id="${s.id}">−</button>
-          <span class="val ${v > 0 ? 'pos' : v < 0 ? 'neg' : ''}">${v > 0 ? '+' + v : v}</span>
+          <span class="val ${v > 0 ? 'pos' : v < 0 ? 'neg' : ''}" id="val-${s.id}">${v > 0 ? '+' + v : v}</span>
           <button class="icon-btn" data-act="inc" data-id="${s.id}">+</button>
         </div>
       </div>`;
   }).join('');
 
-  const quests = S.quests.map((q) => `
-    <button class="quest ${counts[q.id] ? 'done' : ''}" data-act="quest" data-id="${q.id}">
-      ${counts[q.id] ? `<span class="qc">${counts[q.id] > 1 ? '×' + counts[q.id] : '✓'}</span>` : ''}
-      <span class="qi">${esc(q.icon)}</span>
-      <span class="qn">${esc(q.name)}</span>
-      <span class="qr">${rewardsText(q.rewards)}</span>
-    </button>`).join('');
-
-  const done = (day.d || []).map((x, i) => `
-    <div class="done-item">
-      <span style="font-size:22px">${esc(x.i)}</span>
-      <div class="grow"><div style="font-weight:600;font-size:14px">${esc(x.n)}</div><div class="small muted">${rewardsText(x.r)}</div></div>
-      <button class="icon-btn" data-act="undo-quest" data-idx="${i}" aria-label="Отменить">✕</button>
-    </div>`).join('');
-
   return `
     <div class="datebar">
       <button class="icon-btn" data-act="prev-day">‹</button>
-      <div class="d"><b>${humanDate(curDate)}</b><span class="small muted">${isToday ? 'итоги дня' : 'редактирование прошлого дня'}</span></div>
+      <div class="d"><b>${humanDate(curDate)}</b><span>${isToday ? 'итоги дня' : 'прошлый день'}</span></div>
       <button class="icon-btn" data-act="next-day" ${isToday ? 'disabled' : ''}>›</button>
     </div>
-    <div class="card" style="text-align:center">
-      <div class="daytotal">${total > 0 ? '+' : ''}${total} XP</div>
-      <div class="small muted">${total ? 'заработано за день' : 'Отметь, что ты сделал сегодня — и персонаж станет сильнее'}</div>
+    <div class="card sweep center">
+      <div class="daytotal" id="daytotal">${total > 0 ? '+' : ''}${total} XP</div>
+      <div class="small muted">${total ? 'энергии получено за день' : 'Отметь, что сделал сегодня, — и ядро зарядится'}</div>
     </div>
-
     <h2>Подвиги дня</h2>
-    <div class="small muted" style="margin:-4px 0 10px">Нажми на то, что сделал — очки начислятся автоматически. Можно нажимать несколько раз.</div>
     <div class="quests">${quests}</div>
-    ${done ? `<div class="card" style="margin-top:10px">${done}</div>` : ''}
-
+    ${done ? `<div class="card" style="margin-top:12px">${done}</div>` : ''}
     <h2>Ручное начисление</h2>
     ${rows}
-
     <h2>Заметка дня</h2>
     <textarea id="note" placeholder="Что получилось? Чем гордишься? Что улучшить завтра?">${esc(day.note || '')}</textarea>
   `;
@@ -441,37 +603,36 @@ function viewHistory() {
   const days = [];
   for (let i = histRange - 1; i >= 0; i--) days.push(addDays(t, -i));
 
-  // Стековая диаграмма очков по дням
-  const W = 340, H = 170, padL = 26, padB = 22, padT = 8;
-  const totals = days.map((k) => {
-    const p = dayPoints(getDay(k));
-    return S.stats.map((s) => Math.max(0, p[s.id] || 0));
-  });
+  const W = 340, H = 180, padL = 26, padB = 22, padT = 10;
+  const totals = days.map((k) => { const p = dayPoints(getDay(k)); return S.stats.map((s) => Math.max(0, p[s.id] || 0)); });
   const maxV = Math.max(5, ...totals.map((a) => a.reduce((x, y) => x + y, 0)));
   const bw = (W - padL) / days.length;
-  let bars = '';
   const yT = (v) => H - padB - (v / maxV) * (H - padB - padT);
+  let bars = `<defs><filter id="cglow" x="-50%" y="-20%" width="200%" height="140%"><feGaussianBlur stdDeviation="2.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`;
   for (let g = 0; g <= 2; g++) {
     const v = Math.round((maxV * g) / 2), y = yT(v);
-    bars += `<line x1="${padL}" x2="${W}" y1="${y}" y2="${y}" stroke="rgba(255,255,255,.07)"/><text x="${padL - 4}" y="${y + 4}" font-size="10" fill="#9aa0c8" text-anchor="end">${v}</text>`;
+    bars += `<line x1="${padL}" x2="${W}" y1="${y}" y2="${y}" stroke="rgba(255,60,40,.15)" stroke-dasharray="2 4"/><text x="${padL - 5}" y="${y + 4}" font-size="10" fill="rgba(255,220,200,.5)" text-anchor="end" style="font-family:'JetBrains Mono',monospace">${v}</text>`;
   }
+  let cols = '';
   totals.forEach((arr, i) => {
-    let acc = 0;
-    const x = padL + i * bw + bw * 0.15, w = Math.max(1, bw * 0.7);
+    let acc = 0, col = '';
+    const x = padL + i * bw + bw * 0.18, w = Math.max(1.5, bw * 0.64);
     arr.forEach((v, j) => {
       if (!v) return;
       const y1 = yT(acc), y2 = yT(acc + v);
-      bars += `<rect x="${x}" y="${y2}" width="${w}" height="${y1 - y2}" fill="${S.stats[j].color}" rx="${Math.min(2, w / 3)}"/>`;
+      col += `<rect x="${x.toFixed(1)}" y="${y2.toFixed(1)}" width="${w.toFixed(1)}" height="${(y1 - y2).toFixed(1)}" fill="${S.stats[j].color}" rx="${Math.min(2, w / 3).toFixed(1)}"/>`;
       acc += v;
     });
+    if (col) cols += `<g class="colb" style="animation-delay:${(i * (600 / days.length)).toFixed(0)}ms">${col}</g>`;
     const step = histRange <= 7 ? 1 : histRange <= 30 ? 5 : 15;
     if ((days.length - 1 - i) % step === 0) {
       const d = parseKey(days[i]);
-      bars += `<text x="${x + w / 2}" y="${H - 6}" font-size="10" fill="#9aa0c8" text-anchor="middle">${histRange <= 7 ? WD[d.getDay()] : d.getDate() + '.' + pad(d.getMonth() + 1)}</text>`;
+      const lx = x + w / 2, anchor = lx > W - 14 ? 'end' : 'middle';
+      bars += `<text x="${(anchor === 'end' ? W : lx).toFixed(1)}" y="${H - 6}" font-size="10" fill="rgba(255,220,200,.5)" text-anchor="${anchor}" style="font-family:'JetBrains Mono',monospace">${histRange <= 7 ? WD[d.getDay()] : d.getDate() + '.' + pad(d.getMonth() + 1)}</text>`;
     }
   });
+  bars += `<g filter="url(#cglow)">${cols}</g>`;
 
-  // Сумма за период по параметрам
   const sums = S.stats.map((s, j) => totals.reduce((a, arr) => a + arr[j], 0));
   const periodTotal = sums.reduce((a, b) => a + b, 0);
   const activeInRange = days.filter((k) => isActive(getDay(k))).length;
@@ -479,31 +640,32 @@ function viewHistory() {
   const list = Object.keys(S.log).filter((k) => isActive(S.log[k]) || (S.log[k].note || '').trim()).sort().reverse().slice(0, 60).map((k) => {
     const d = S.log[k];
     const p = dayPoints(d);
-    const chips = S.stats.filter((s) => p[s.id]).map((s) => `<span class="chip">${esc(s.icon)} ${sign(p[s.id])}</span>`).join('');
+    const chips = S.stats.filter((s) => p[s.id]).map((s) => `<span class="chip" style="color:${s.color}">${ico(s.icon)}${sign(p[s.id])}</span>`).join('');
+    const note = (d.note || '').trim();
     return `
       <button class="card hday" data-act="open-day" data-k="${k}">
         <div class="row between"><b>${humanDate(k)}</b><span class="today-plus">${sign(dayTotal(d))} XP</span></div>
         ${chips ? `<div class="chips">${chips}</div>` : ''}
-        ${(d.d || []).length ? `<div class="small muted" style="margin-top:6px">${d.d.map((x) => esc(x.i)).join(' ')}</div>` : ''}
-        ${d.note && d.note.trim() ? `<div class="small" style="margin-top:6px;color:#c9cdf0">“${esc(d.note.trim().slice(0, 140))}${d.note.trim().length > 140 ? '…' : ''}”</div>` : ''}
+        ${(d.d || []).length ? `<div class="ic">${d.d.map((x) => ico(x.i)).join('')}</div>` : ''}
+        ${note ? `<div class="quote">«${esc(note.slice(0, 140))}${note.length > 140 ? '…' : ''}»</div>` : ''}
       </button>`;
   }).join('');
 
   return `
     <h1>История</h1>
-    <div class="seg" style="margin-bottom:10px">
+    <div class="seg">
       ${[7, 30, 90].map((r) => `<button data-act="range" data-r="${r}" class="${histRange === r ? 'active' : ''}">${r} дней</button>`).join('')}
     </div>
-    <div class="card">
-      <div class="row between" style="margin-bottom:6px">
-        <b>+${periodTotal} XP</b>
-        <span class="small muted">активных дней: ${activeInRange} из ${histRange}</span>
+    <div class="card sweep">
+      <div class="row between" style="margin-bottom:8px">
+        <span class="bigxp">+${fmt(periodTotal)} XP</span>
+        <span class="small muted mono">${activeInRange}/${histRange} дней</span>
       </div>
       <svg class="chart" viewBox="0 0 ${W} ${H}">${bars}</svg>
-      <div class="legend">${S.stats.map((s, j) => `<span><i style="background:${s.color}"></i>${esc(s.name)} ${sums[j]}</span>`).join('')}</div>
+      <div class="legend">${S.stats.map((s, j) => `<span style="color:${s.color}"><i style="background:${s.color}"></i><span style="color:var(--muted)">${esc(s.name)} ${sums[j]}</span></span>`).join('')}</div>
     </div>
-    <h2>Дневник</h2>
-    ${list || `<div class="empty"><div class="e">📖</div>Пока пусто. Подведи итоги первого дня!</div>`}
+    <h2>Летопись</h2>
+    ${list || `<div class="empty">${ico('book')}<div>Пока пусто. Подведи итоги первого дня!</div></div>`}
   `;
 }
 
@@ -512,15 +674,16 @@ function viewAch() {
   const got = defs.filter((a) => S.ach[a.id]).length;
   return `
     <h1>Награды</h1>
-    <div class="card row between"><span>Получено</span><b style="color:var(--gold)">${got} / ${defs.length}</b></div>
+    <div class="card sweep row between"><span class="sn">Получено</span><span class="bigxp">${got} / ${defs.length}</span></div>
     <div class="achs">
       ${defs.map((a) => {
         const has = !!S.ach[a.id];
-        return `<div class="ach ${has ? 'got' : 'locked'}">
-          <div class="ai">${a.icon}</div>
+        return `<div class="card ach ${has ? 'got' : 'locked'}">
+          <div class="badge">${ico(a.icon)}</div>
           <div class="an">${a.name}</div>
           <div class="ad">${a.desc}</div>
-          <div class="ad" style="margin-top:6px;${has ? 'color:var(--gold)' : ''}">${has ? '✓ ' + humanDate(S.ach[a.id]).replace(/^Сегодня, |^Вчера, /, '') : a.prog}</div>
+          ${has ? `<div class="ap">✓ ${shortDate(S.ach[a.id])}</div>`
+                : `<div class="ap">${a.v} / ${a.goal}</div>${barHTML('ach-' + a.id, a.v / a.goal, '#ff4a2a')}`}
         </div>`;
       }).join('')}
     </div>
@@ -531,32 +694,31 @@ function viewSettings() {
   const standalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
   return `
     <h1>Настройки</h1>
-
     <h2>Персонаж</h2>
     <div class="card">
       <label class="f" style="margin-top:0">Имя</label>
-      <input type="text" id="pname" value="${esc(S.profile.name)}" maxlength="30">
-      <label class="f">Аватар</label>
-      <div class="avatars">${AVATARS.map((a) => `<button data-act="avatar" data-a="${a}" class="${S.profile.avatar === a ? 'sel' : ''}">${a}</button>`).join('')}</div>
+      <input type="text" id="pname" value="${esc(S.profile.name)}" maxlength="24">
+      <label class="f">Символ в ядре</label>
+      <div class="picker">${AVATAR_CHOICES.map((a) => `<button data-act="avatar" data-a="${a}" class="${S.profile.avatar === a ? 'sel' : ''}">${ico(a)}</button>`).join('')}</div>
     </div>
 
     <h2>Параметры</h2>
     <div class="card">
       ${S.stats.map((s) => `
         <div class="list-item">
-          <div class="stat-ico" style="background:${s.color}22;border:1px solid ${s.color}55;width:38px;height:38px;font-size:20px">${esc(s.icon)}</div>
-          <div class="grow stat-name">${esc(s.name)}</div>
+          <div class="sico" style="color:${s.color}">${ico(s.icon)}</div>
+          <div class="grow sn">${esc(s.name)}</div>
           <button class="btn sm" data-act="edit-stat" data-id="${s.id}">Изменить</button>
         </div>`).join('')}
       <button class="btn block" data-act="add-stat" style="margin-top:10px">＋ Добавить параметр</button>
     </div>
 
-    <h2>Подвиги (быстрые действия)</h2>
+    <h2>Подвиги</h2>
     <div class="card">
       ${S.quests.map((q) => `
         <div class="list-item">
-          <span style="font-size:24px">${esc(q.icon)}</span>
-          <div class="grow"><div style="font-weight:600">${esc(q.name)}</div><div class="small muted">${rewardsText(q.rewards)}</div></div>
+          <span class="qi" style="color:#ff8a5a">${ico(q.icon)}</span>
+          <div class="grow"><div style="font-weight:600">${esc(q.name)}</div><span class="qr" style="margin-top:3px">${rewardsHTML(q.rewards)}</span></div>
           <button class="btn sm" data-act="edit-quest" data-id="${q.id}">Изменить</button>
         </div>`).join('')}
       <button class="btn block" data-act="add-quest" style="margin-top:10px">＋ Добавить подвиг</button>
@@ -565,9 +727,9 @@ function viewSettings() {
     <h2>Данные</h2>
     <div class="card">
       <div class="small muted" style="margin-bottom:10px">Данные хранятся только на этом телефоне. Время от времени делай резервную копию.</div>
-      <div class="row" style="flex-wrap:wrap">
-        <button class="btn grow" data-act="export">📤 Экспорт</button>
-        <button class="btn grow" data-act="import">📥 Импорт</button>
+      <div class="row">
+        <button class="btn grow" data-act="export">${ico('upload')} Экспорт</button>
+        <button class="btn grow" data-act="import">${ico('download')} Импорт</button>
       </div>
       <input type="file" id="importfile" accept="application/json,.json,text/plain" class="hidden">
       <button class="btn danger block" data-act="reset" style="margin-top:10px">Начать заново</button>
@@ -577,35 +739,37 @@ function viewSettings() {
     <h2>Установка на iPhone</h2>
     <div class="card small">
       1. Открой эту страницу в <b>Safari</b>.<br>
-      2. Нажми кнопку <b>«Поделиться»</b> (квадрат со стрелкой).<br>
-      3. Выбери <b>«На экран „Домой“»</b> и нажми «Добавить».<br>
-      Приложение появится на рабочем столе и будет работать без интернета.
+      2. Нажми <b>«Поделиться»</b> (квадрат со стрелкой).<br>
+      3. Выбери <b>«На экран „Домой“»</b>.<br>
+      <span class="muted">Приложение будет открываться на весь экран и работать без интернета.</span>
     </div>`}
 
     <h2>Как это работает</h2>
     <div class="card small muted">
-      Каждый вечер отмечай «подвиги» и/или вручную начисляй очки параметрам.
-      Для перехода параметра с уровня N на N+1 нужно 10×N очков, поэтому первые уровни даются быстро, а дальше — нужна регулярность.
-      Уровень персонажа растёт от суммы всех очков. Серия 🔥 — сколько дней подряд ты прокачивался.
+      Каждый вечер отмечай подвиги и/или вручную начисляй очки параметрам.
+      Чтобы параметр перешёл с уровня N на N+1, нужно 10×N очков: первые уровни даются быстро, дальше нужна регулярность.
+      Уровень персонажа растёт от суммы всех очков. Серия — сколько дней подряд ты прокачивался.
     </div>
-    <div class="small muted" style="text-align:center;margin-top:16px">Level Up · v1</div>
+    <div class="ver">LEVEL UP · v2 · REACTOR</div>
   `;
 }
 
 /* ---------------------- Редакторы (шторки) ---------------------- */
 
+const iconPicker = (cur) => `<div class="picker" id="icon-picker">${ICON_CHOICES.map((k) => `<button data-act="pick-icon" data-k="${k}" class="${cur === k ? 'sel' : ''}">${ico(k)}</button>`).join('')}</div><input type="hidden" id="pick-icon" value="${esc(cur)}">`;
+
 function statEditor(id) {
-  const s = id ? statById(id) : { id: '', name: '', icon: '⭐', color: COLORS[S.stats.length % COLORS.length] };
+  const s = id ? statById(id) : { id: '', name: '', icon: 'star', color: COLORS[S.stats.length % COLORS.length] };
   openSheet(`
-    <h1 style="font-size:22px">${id ? 'Параметр' : 'Новый параметр'}</h1>
+    <h1>${id ? 'Параметр' : 'Новый параметр'}</h1>
     <label class="f">Название</label>
     <input type="text" id="s-name" value="${esc(s.name)}" maxlength="24" placeholder="Например, Креативность">
-    <label class="f">Иконка (эмодзи)</label>
-    <input type="text" id="s-icon" value="${esc(s.icon)}" maxlength="8">
+    <label class="f">Символ</label>
+    ${iconPicker(s.icon)}
     <label class="f">Цвет</label>
-    <div class="colors">${COLORS.map((c) => `<button data-act="pick-color" data-c="${c}" class="${s.color === c ? 'sel' : ''}" style="background:${c}"></button>`).join('')}</div>
+    <div class="colors">${COLORS.map((c) => `<button data-act="pick-color" data-c="${c}" class="${s.color === c ? 'sel' : ''}" style="background:${c};color:${c}"></button>`).join('')}</div>
     <input type="hidden" id="s-color" value="${s.color}">
-    <div class="row" style="margin-top:20px">
+    <div class="row" style="margin-top:22px">
       ${id ? `<button class="btn danger" data-act="del-stat" data-id="${id}">Удалить</button>` : ''}
       <button class="btn grow" data-act="close-sheet">Отмена</button>
       <button class="btn primary grow" data-act="save-stat" data-id="${id || ''}">Сохранить</button>
@@ -614,25 +778,28 @@ function statEditor(id) {
 }
 
 function questEditor(id) {
-  const q = id ? S.quests.find((x) => x.id === id) : { id: '', name: '', icon: '⚡', rewards: {} };
+  const q = id ? S.quests.find((x) => x.id === id) : { id: '', name: '', icon: 'bolt', rewards: {} };
   openSheet(`
-    <h1 style="font-size:22px">${id ? 'Подвиг' : 'Новый подвиг'}</h1>
+    <h1>${id ? 'Подвиг' : 'Новый подвиг'}</h1>
     <label class="f">Название</label>
     <input type="text" id="q-name" value="${esc(q.name)}" maxlength="40" placeholder="Например, Холодный душ">
-    <label class="f">Иконка (эмодзи)</label>
-    <input type="text" id="q-icon" value="${esc(q.icon)}" maxlength="8">
+    <label class="f">Символ</label>
+    ${iconPicker(q.icon)}
     <label class="f">Награда</label>
-    ${S.stats.map((s) => `
+    ${S.stats.map((s) => {
+      const v = q.rewards[s.id] || 0;
+      return `
       <div class="list-item">
-        <span style="font-size:20px">${esc(s.icon)}</span>
-        <div class="grow">${esc(s.name)}</div>
+        <div class="sico" style="color:${s.color}">${ico(s.icon)}</div>
+        <div class="grow sn">${esc(s.name)}</div>
         <div class="stepper">
           <button class="icon-btn" data-act="qr-dec" data-id="${s.id}">−</button>
-          <span class="val ${(q.rewards[s.id] || 0) > 0 ? 'pos' : (q.rewards[s.id] || 0) < 0 ? 'neg' : ''}" id="qr-${s.id}" data-v="${q.rewards[s.id] || 0}">${q.rewards[s.id] || 0}</span>
+          <span class="val ${v > 0 ? 'pos' : v < 0 ? 'neg' : ''}" id="qr-${s.id}" data-v="${v}">${v}</span>
           <button class="icon-btn" data-act="qr-inc" data-id="${s.id}">+</button>
         </div>
-      </div>`).join('')}
-    <div class="row" style="margin-top:20px">
+      </div>`;
+    }).join('')}
+    <div class="row" style="margin-top:22px">
       ${id ? `<button class="btn danger" data-act="del-quest" data-id="${id}">Удалить</button>` : ''}
       <button class="btn grow" data-act="close-sheet">Отмена</button>
       <button class="btn primary grow" data-act="save-quest" data-id="${id || ''}">Сохранить</button>
@@ -669,12 +836,12 @@ function doImport(file) {
       const data = JSON.parse(reader.result);
       if (!data || typeof data !== 'object' || !Array.isArray(data.stats) || typeof data.log !== 'object') throw new Error('bad');
       if (!confirm('Заменить текущие данные данными из файла?')) return;
-      S = Object.assign(defaultState(), data);
+      S = hydrate(data);
       save();
-      toast('✅ Данные восстановлены');
-      render();
+      toast('Данные восстановлены', 'gold', 'download');
+      render(true);
     } catch (e) {
-      toast('⚠️ Файл не похож на резервную копию Level Up');
+      toast('Файл не похож на резервную копию Level Up');
     }
   };
   reader.readAsText(file);
@@ -682,13 +849,13 @@ function doImport(file) {
 
 /* ---------------------- Обработчики ---------------------- */
 
+function go(t) { tab = t; render(true); window.scrollTo(0, 0); }
+
 document.addEventListener('click', (e) => {
   const tb = e.target.closest('#tabbar button');
   if (tb) {
-    tab = tb.dataset.tab;
-    if (tab === 'day') curDate = todayKey();
-    render();
-    window.scrollTo(0, 0);
+    if (tb.dataset.tab === 'day') curDate = todayKey();
+    go(tb.dataset.tab);
     return;
   }
   if (e.target.id === 'sheet') { closeSheet(); return; }
@@ -699,33 +866,51 @@ document.addEventListener('click', (e) => {
   const id = el.dataset.id;
 
   switch (act) {
-    case 'go-today': tab = 'day'; curDate = todayKey(); render(); window.scrollTo(0, 0); break;
-    case 'prev-day': curDate = addDays(curDate, -1); render(); break;
-    case 'next-day': if (curDate < todayKey()) { curDate = addDays(curDate, 1); render(); } break;
+    case 'go-today': curDate = todayKey(); go('day'); break;
+    case 'prev-day': curDate = addDays(curDate, -1); render(true); break;
+    case 'next-day': if (curDate < todayKey()) { curDate = addDays(curDate, 1); render(true); } break;
+
     case 'inc':
-    case 'dec':
+    case 'dec': {
+      const st = statById(id);
+      const d = act === 'inc' ? 1 : -1;
+      const [x, y] = centerOf($('#val-' + id));
       mutate(() => {
-        const d = ensureDay(curDate);
-        d.m[id] = clamp((d.m[id] || 0) + (act === 'inc' ? 1 : -1), -50, 99);
-        if (!d.m[id]) delete d.m[id];
+        const day = ensureDay(curDate);
+        day.m[id] = clamp((day.m[id] || 0) + d, -50, 99);
+        if (!day.m[id]) delete day.m[id];
       });
+      ['#val-' + id, '#daytotal'].forEach((s) => { const n = $(s); if (n) n.classList.add('bump'); });
+      fx('float', x, y - 10, `color:${d > 0 ? st.color : 'var(--bad)'}`, sign(d), 1200);
+      if (d > 0) burst(x, y, 6);
       break;
+    }
     case 'quest': {
       const q = S.quests.find((x) => x.id === id);
       if (!q) break;
+      const [x, y] = [e.clientX || centerOf(el)[0], e.clientY || centerOf(el)[1]];
       mutate(() => { ensureDay(curDate).d.push({ q: q.id, n: q.name, i: q.icon, r: clone(q.rewards) }); });
-      toast(q.icon + ' ' + q.name + ': ' + rewardsText(q.rewards));
+      const card = $(`[data-act=quest][data-id="${id}"]`);
+      if (card) { card.classList.add('hit'); }
+      const dt = $('#daytotal'); if (dt) dt.classList.add('bump');
+      burst(x, y, 12);
+      floats(x, y - 20, Object.entries(q.rewards).filter(([sid, v]) => v && statById(sid))
+        .map(([sid, v]) => ({ icon: statById(sid).icon, text: sign(v), color: statById(sid).color })));
       break;
     }
     case 'undo-quest':
       mutate(() => { ensureDay(curDate).d.splice(Number(el.dataset.idx), 1); });
       break;
-    case 'open-day': curDate = el.dataset.k; tab = 'day'; render(); window.scrollTo(0, 0); break;
-    case 'range': histRange = Number(el.dataset.r); render(); break;
-    case 'avatar': S.profile.avatar = el.dataset.a; save(); render(); break;
-    case 'close-celebrate': $('#celebrate').classList.add('hidden'); $('#celebrate').innerHTML = ''; break;
+    case 'open-day': curDate = el.dataset.k; go('day'); break;
+    case 'range': histRange = Number(el.dataset.r); render(true); break;
+    case 'avatar': S.profile.avatar = el.dataset.a; save(); render(false); break;
+    case 'close-lu': { const lu = el.closest('.lu'); lu.style.transition = 'opacity .3s'; lu.style.opacity = '0'; setTimeout(() => lu.remove(), 300); break; }
     case 'close-sheet': closeSheet(); break;
 
+    case 'pick-icon':
+      document.querySelectorAll('#icon-picker button').forEach((b) => b.classList.toggle('sel', b === el));
+      $('#pick-icon').value = el.dataset.k;
+      break;
     case 'edit-stat': statEditor(id); break;
     case 'add-stat': statEditor(null); break;
     case 'pick-color':
@@ -735,17 +920,17 @@ document.addEventListener('click', (e) => {
     case 'save-stat': {
       const name = $('#s-name').value.trim();
       if (!name) { toast('Введите название'); break; }
-      const icon = $('#s-icon').value.trim() || '⭐';
+      const icon = $('#pick-icon').value || 'star';
       const color = $('#s-color').value;
       if (id) Object.assign(statById(id), { name, icon, color });
       else S.stats.push({ id: uid('s'), name, icon, color });
-      save(); closeSheet(); render();
+      save(); closeSheet(); render(false);
       break;
     }
     case 'del-stat':
       if (confirm('Удалить параметр? Накопленные очки этого параметра перестанут учитываться.')) {
         S.stats = S.stats.filter((s) => s.id !== id);
-        save(); closeSheet(); render();
+        save(); closeSheet(); render(false);
       }
       break;
 
@@ -756,24 +941,25 @@ document.addEventListener('click', (e) => {
       const v = $('#qr-' + id);
       const n = clamp(Number(v.dataset.v) + (act === 'qr-inc' ? 1 : -1), -20, 20);
       v.dataset.v = n; v.textContent = n;
-      v.className = 'val ' + (n > 0 ? 'pos' : n < 0 ? 'neg' : '');
+      v.className = 'val bump ' + (n > 0 ? 'pos' : n < 0 ? 'neg' : '');
+      void v.offsetWidth;
       break;
     }
     case 'save-quest': {
       const name = $('#q-name').value.trim();
       if (!name) { toast('Введите название'); break; }
-      const icon = $('#q-icon').value.trim() || '⚡';
+      const icon = $('#pick-icon').value || 'bolt';
       const rewards = {};
       S.stats.forEach((s) => { const n = Number($('#qr-' + s.id).dataset.v); if (n) rewards[s.id] = n; });
       if (id) Object.assign(S.quests.find((x) => x.id === id), { name, icon, rewards });
       else S.quests.push({ id: uid('q'), name, icon, rewards });
-      save(); closeSheet(); render();
+      save(); closeSheet(); render(false);
       break;
     }
     case 'del-quest':
       if (confirm('Удалить подвиг? Уже начисленные очки сохранятся.')) {
         S.quests = S.quests.filter((q) => q.id !== id);
-        save(); closeSheet(); render();
+        save(); closeSheet(); render(false);
       }
       break;
 
@@ -781,7 +967,7 @@ document.addEventListener('click', (e) => {
     case 'import': $('#importfile').click(); break;
     case 'reset':
       if (confirm('Удалить весь прогресс и начать заново? Это нельзя отменить.')) {
-        S = defaultState(); save(); tab = 'hero'; render();
+        S = defaultState(); save(); go('hero');
       }
       break;
   }
@@ -789,8 +975,7 @@ document.addEventListener('click', (e) => {
 
 document.addEventListener('input', (e) => {
   if (e.target.id === 'note') {
-    const d = ensureDay(curDate);
-    d.note = e.target.value;
+    ensureDay(curDate).note = e.target.value;
     save();
   } else if (e.target.id === 'pname') {
     S.profile.name = e.target.value.trim() || 'Герой';
@@ -808,15 +993,16 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && todayKey() !== lastToday) {
     if (curDate === lastToday) curDate = todayKey();
     lastToday = todayKey();
-    render();
+    render(false);
   }
 });
 
 /* ---------------------- Старт ---------------------- */
 
+$('#tabbar').innerHTML = TABS.map(([k, label, icon]) => `<button data-tab="${k}">${ico(icon)}<span>${label}</span></button>`).join('');
 checkAchievements(true);
 save();
-render();
+render(true);
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
