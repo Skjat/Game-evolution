@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>Level Up</title>
+  <meta name="description" content="Прокачивай себя как персонажа RPG: начисляй очки параметрам по итогам дня.">
+  <meta name="theme-color" content="#0f1020">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Level Up">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="view"></main>
+
+  <nav class="tabbar" id="tabbar">
+    <button data-tab="hero"><span class="ti">🧙</span><span>Герой</span></button>
+    <button data-tab="day"><span class="ti">📝</span><span>Итоги</span></button>
+    <button data-tab="history"><span class="ti">📈</span><span>История</span></button>
+    <button data-tab="ach"><span class="ti">🏆</span><span>Награды</span></button>
+    <button data-tab="settings"><span class="ti">⚙️</span><span>Ещё</span></button>
+  </nav>
+
+  <div id="sheet" class="sheet hidden"><div class="sheet-card" id="sheet-card"></div></div>
+  <div id="toasts"></div>
+  <div id="celebrate" class="celebrate hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
