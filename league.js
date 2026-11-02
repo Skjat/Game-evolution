@@ -40,7 +40,7 @@ const LEAGUE = (() => {
     try {
       res = await fetch(base + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
     } catch (e) {
-      throw Object.assign(new Error('Нет связи с сервером лиги'), { status: 0 });
+      throw Object.assign(new Error('Нет связи с сервером лиги. Проверь интернет, а если включён VPN — выключи его или добавь workers.dev в исключения VPN'), { status: 0 });
     }
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw Object.assign(new Error(data.error || `Ошибка сервера (${res.status})`), { status: res.status });
