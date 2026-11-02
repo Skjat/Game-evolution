@@ -6,7 +6,7 @@
    ===================================================================== */
 
 const STORAGE_KEY = 'lvlup.v1';
-const DATA_VERSION = 4;
+const DATA_VERSION = 5;
 
 /* ---------------------- Иконки (SVG, 24×24, линии) ---------------------- */
 
@@ -205,6 +205,9 @@ function migrate(s) {
     for (const k in s.log || {}) for (const x of s.log[k].d || []) if (!x.c) x.c = { ...(QUEST_COUNTERS[x.q] || {}) };
   }
   if (v < 4 && !Array.isArray(s.debuffs)) s.debuffs = clone(DEFAULT_DEBUFFS);
+  if (v < 5 && Array.isArray(s.debuffs)) {   // новые слабости по умолчанию
+    for (const d of DEFAULT_DEBUFFS) if (['b_night', 'b_overeat', 'b_energy'].includes(d.id) && !s.debuffs.find((x) => x.id === d.id)) s.debuffs.push(clone(d));
+  }
   s.settings = Object.assign({ sound: true }, s.settings || {});
   s.custom = Object.assign({ counters: [], milestones: [] }, s.custom || {});
   s.shared = Object.assign({ counters: [], milestones: [] }, s.shared || {});
@@ -309,7 +312,7 @@ function computeCounters() {
   if (counterCache && counterCache.key === key) return counterCache;
   const raw = {}, shame = {};
   const shameList = counterList(S).filter(isShame);
-  shameList.forEach((c) => { shame[c.id] = { value: 0, clean: 0, redeemed: 0 }; });
+  shameList.forEach((c) => { shame[c.id] = { value: 0, clean: 0, redeemed: 0, run: 0, maxRun: 0, lastInc: '', cleanRun: 0, relapse: '' }; });
   for (const k of Object.keys(S.log).sort()) {
     if (k > key) continue;
     const day = S.log[k];
@@ -318,8 +321,21 @@ function computeCounters() {
     const logged = isLogged(day);
     for (const sc of shameList) {
       const st = shame[sc.id], inc = c[sc.id] || 0;
-      if (inc) { st.value = Math.max(0, round1(st.value + inc)); if (inc > 0) st.clean = 0; continue; }
+      if (inc) {
+        if (inc > 0) {
+          // Антисерия: та же слабость в календарно соседние дни.
+          st.run = st.lastInc === addDays(k, -1) ? st.run + 1 : 1;
+          st.maxRun = Math.max(st.maxRun, st.run);
+          // Рецидив: срыв после долгого «чистого» периода, если привычка уже была.
+          if (st.lastInc && st.cleanRun >= RELAPSE_DAYS && !st.relapse) st.relapse = k;
+          st.lastInc = k;
+          st.clean = 0; st.cleanRun = 0;
+        }
+        st.value = Math.max(0, round1(st.value + inc));
+        continue;
+      }
       if (!logged) continue;                       // незаполненный день не засчитывается и не обнуляет
+      if (st.lastInc) st.cleanRun++;
       if (st.value <= 0) { st.clean = 0; continue; }
       if (++st.clean >= REDEEM_DAYS) {
         let i = -1;
@@ -443,7 +459,13 @@ function allAchievements() {
     }));
   }
   const md = milestoneDates();
-  for (const m of milestoneList(S)) list.push({ id: 'm_' + m.id, kind: 'milestone', m, sphere: m.sphere, icon: m.icon, name: m.name, desc: m.desc, ok: !!md[m.id], date: md[m.id] });
+  for (const m of milestoneList(S)) list.push({ id: 'm_' + m.id, kind: m.sphere === 'shame' ? 'shame' : 'milestone', shameKind: 'milestone', m, sphere: m.sphere, icon: m.icon, name: m.name, desc: m.desc, ok: !!md[m.id], date: md[m.id] });
+  // Антисерии и рецидив — по всем цепочкам позора.
+  const sh = computeCounters().shame;
+  const maxRun = Math.max(0, ...Object.values(sh).map((x) => x.maxRun));
+  for (const a of ANTI_STREAKS) list.push({ id: a.id, kind: 'shame', shameKind: 'anti', sphere: 'shame', icon: a.icon, name: a.name, desc: a.desc, ok: maxRun >= a.days, v: Math.min(maxRun, a.days), goal: a.days });
+  const relapses = Object.values(sh).map((x) => x.relapse).filter(Boolean).sort();
+  list.push({ id: 'as_relapse', kind: 'shame', shameKind: 'anti', sphere: 'shame', icon: 'arrowDown', name: 'Рецидив', desc: `Сорвался после ${RELAPSE_DAYS}+ чистых дней`, ok: relapses.length > 0, date: relapses[0] });
   return list;
 }
 
@@ -471,7 +493,7 @@ function checkAchievements(silent) {
   else good.forEach((a, i) => setTimeout(() => toast(
     a.kind === 'tier' ? `${a.counter.name}: «${a.name}» · ${rarityOf(a.counter, a.tier).name}` : 'Достижение: ' + a.name,
     'gold', a.icon), i * 350));
-  bad.slice(0, 3).forEach((a, i) => setTimeout(() => toast(`Позор: ты теперь «${a.name}»`, 'shame', 'skull'), (good.length + i) * 350 + 200));
+  bad.slice(0, 3).forEach((a, i) => setTimeout(() => toast(a.shameKind ? `Позор: «${a.name}»` : `Позор: ты теперь «${a.name}»`, 'shame', 'skull'), (good.length + i) * 350 + 200));
   if (good.length) SFX.play('achieve');
   if (bad.length) setTimeout(() => SFX.play('fail'), good.length ? 450 : 0);
 }
@@ -984,7 +1006,23 @@ function viewAch() {
     } else body = achSphere === 'shame' ? `
       <div class="card shame-intro">${ico('skull')}<div><b>Коллекция позора: ${shameGot}</b><div class="small muted">Клейма даются за слабости. Искупление: ${REDEEM_DAYS} дней без слабости (в дни, когда отмечаешь итоги) снимают одну ступень. Срыв обнуляет отсчёт.</div></div></div>
       <h2 class="bad-h">Клейма</h2>${chains}
-      <button class="btn block add-own" data-act="add-cc">${ico('sparkle')} Своя цепочка позора</button>` : `<h2>Цепочки</h2>${chains}
+      <button class="btn block add-own" data-act="add-cc">${ico('sparkle')} Своя цепочка позора</button>
+      <h2 class="bad-h">Антисерии</h2>
+      <div class="achs">${bySphere('shame').filter((a) => a.shameKind === 'anti').map((a) => `<div class="card ach shame ${a.ok ? 'got' : 'locked'}">
+          <div class="badge">${ico(a.icon)}</div>
+          <div class="an">${esc(a.name)}</div>
+          <div class="ad">${esc(a.desc)}</div>
+          <div class="ap">${a.ok ? (S.ach[a.id] ? '✕ ' + shortDate(S.ach[a.id]) : '✕') : (a.goal ? `рекорд ${a.v} / ${a.goal}` : 'пока нет')}</div>
+        </div>`).join('')}</div>
+      <h2 class="bad-h">Позорные вехи</h2>
+      <div class="achs">${milestoneList(S).filter((m) => m.sphere === 'shame').map((m) => `
+        <button class="card ach shame ${md[m.id] ? 'got' : 'locked'}" data-act="milestone" data-id="${m.id}">
+          <div class="badge">${ico(m.icon)}</div>
+          <div class="an">${esc(m.name)}</div>
+          <div class="ad">${esc(m.desc || '')}</div>
+          <div class="ap">${md[m.id] ? '✕ ' + shortDate(md[m.id]) : 'не было'}</div>
+        </button>`).join('')}</div>
+      <button class="btn block add-own" data-act="add-cm" style="margin-top:12px">${ico('sparkle')} Своя позорная веха</button>` : `<h2>Цепочки</h2>${chains}
       <button class="btn block add-own" data-act="add-cc">${ico('sparkle')} Своя цепочка</button>
       <h2>Вехи</h2><div class="achs">${miles}</div>
       <button class="btn block add-own" data-act="add-cm" style="margin-top:12px">${ico('sparkle')} Своя веха</button>`;
@@ -1094,7 +1132,7 @@ function weekStartKey(k) { const d = parseKey(k); return addDays(k, -((d.getDay(
 // Сводка игрока для лиги — единственное, что уходит на сервер.
 function leagueProfile() {
   const t = todayKey(), ws = weekStartKey(t), pws = addDays(ws, -7);
-  let week = 0, loss = 0, last = 0;
+  let week = 0, loss = 0, last = 0, lastLoss = 0;
   const src = { quests: 0, manual: 0, penalties: 0 };
   for (const k in S.log) {
     const d = S.log[k];
@@ -1102,7 +1140,7 @@ function leagueProfile() {
       week += dayTotal(d); loss += dayLoss(d);
       for (const x of d.d || []) for (const id in x.r) if (statById(id)) src.quests += x.r[id];
       for (const id in d.m || {}) if (statById(id) && d.m[id] > 0) src.manual += d.m[id];
-    } else if (k >= pws && k < ws) last += dayTotal(d);
+    } else if (k >= pws && k < ws) { last += dayTotal(d); lastLoss += dayLoss(d); }
   }
   src.penalties = loss;
   const xp = statXP(), total = totalXP(xp), ch = levelInfo(total, charK());
@@ -1112,7 +1150,7 @@ function leagueProfile() {
     return top ? { t: top.title, g: top.goal } : null;
   }).filter(Boolean).sort((a, b) => b.g - a.g).slice(0, 4).map((x) => x.t);
   return {
-    v: 1, level: ch.level, title: titleFor(ch.level), xp: total, week, weekLoss: loss, weekStart: ws, lastWeek: last, lastWeekStart: pws,
+    v: 1, level: ch.level, title: titleFor(ch.level), xp: total, week, weekLoss: loss, weekStart: ws, lastWeek: last, lastWeekLoss: lastLoss, lastWeekStart: pws,
     streak: currentStreak(), best: bestStreak(), ach: all.filter((a) => a.kind !== 'shame' && a.ok).length,
     shame: all.filter((a) => a.kind === 'shame' && a.ok).length, shameTitles,
     stats: S.stats.slice(0, 8).map((s) => ({ n: s.name, i: s.icon, c: s.color, l: levelInfo(xp[s.id], STAT_K).level })),
@@ -1156,12 +1194,21 @@ function timeAgo(ms) {
 }
 const miniAvatar = (icon, cls = '') => `<span class="mav ${cls}">${ico(icon || 'reactor')}</span>`;
 
+// «Позор недели»: кто больше всех потерял на слабостях за прошлую неделю. Титул держится до следующего понедельника.
+function shameOfWeek(members) {
+  const pws = addDays(weekStartKey(todayKey()), -7);
+  const lastLoss = (p) => (p.weekStart === pws ? p.weekLoss || 0 : p.lastWeekStart === pws ? p.lastWeekLoss || 0 : 0);
+  const worst = members.filter((m) => lastLoss(m.p) < 0).sort((a, b) => lastLoss(a.p) - lastLoss(b.p))[0];
+  return worst ? { id: worst.id, loss: lastLoss(worst.p) } : null;
+}
+
 function leagueRows(board) {
   const ws = weekStartKey(todayKey()), pws = addDays(ws, -7);
   const weekVal = (p) => (p.weekStart === ws ? p.week || 0 : 0);
   const lastVal = (p) => (p.weekStart === pws ? p.week || 0 : p.lastWeekStart === pws ? p.lastWeek || 0 : 0);
   const members = board.members.map((m) => ({ ...m, p: m.profile || {} }));
   const champ = members.filter((m) => lastVal(m.p) > 0).sort((a, b) => lastVal(b.p) - lastVal(a.p))[0];
+  const loser = shameOfWeek(members.map((m) => ({ id: m.id, p: m.p })));
   const val = {
     week: (m) => weekVal(m.p),
     level: (m) => (m.p.level || 1) * 1e6 + (m.p.xp || 0),
@@ -1189,7 +1236,7 @@ function leagueRows(board) {
     return `<button class="card lrow ${me ? 'me' : ''}" data-act="lg-member" data-id="${m.id}">
       <span class="rank r${i + 1}">${i + 1}</span>
       ${miniAvatar(m.avatar)}
-      <span class="grow"><span class="lname">${esc(m.name)}${me ? ' <em>ты</em>' : ''}${champ && champ.id === m.id ? `<span class="crown" title="Чемпион прошлой недели">${ico('crown')}</span>` : ''}</span>
+      <span class="grow"><span class="lname">${esc(m.name)}${me ? ' <em>ты</em>' : ''}${champ && champ.id === m.id ? `<span class="crown" title="Чемпион прошлой недели">${ico('crown')}</span>` : ''}${loser && loser.id === m.id ? `<span class="tag shamewk">${ico('skull')} позор недели</span>` : ''}</span>
         <span class="lsub">${sub}${stale}</span></span>
       <span class="lval">${big}</span>
     </button>`;
@@ -1271,6 +1318,7 @@ function memberSheet(id) {
   if (!m) return;
   const p = m.profile || {}, ws = weekStartKey(todayKey());
   const src = p.src || {};
+  const loser = shameOfWeek(b.members.map((x) => ({ id: x.id, p: x.profile || {} })));
   openSheet(`
     <div class="row" style="gap:14px">${miniAvatar(m.avatar, 'big')}
       <div class="grow"><h1 style="margin:0">${esc(m.name)}</h1><div class="hero-title" style="letter-spacing:.12em">${esc(p.title || 'Новичок')} · ${p.level || 1} уровень</div></div></div>
@@ -1285,6 +1333,7 @@ function memberSheet(id) {
       <div class="row between"><span>Вручную</span><b>+${src.manual || 0}</b></div>
       <div class="row between tox"><span>Слабости и штрафы</span><b>${src.penalties || 0}</b></div></div>` : ''}
     <h2 class="bad-h">Позор</h2>
+    ${loser && loser.id === m.id ? `<div class="card small shame-intro" style="margin-bottom:8px">${ico('skull')}<div><b class="tox">Позор недели</b><div class="muted">Больше всех потерял на слабостях за прошлую неделю: ${loser.loss} XP</div></div></div>` : ''}
     <div class="card small">${(p.shameTitles || []).length ? `<span class="tox">${ico('skull')} ${p.shameTitles.map(esc).join(' · ')}</span><div class="muted" style="margin-top:6px">Всего клейм: ${p.shame || 0}</div>` : 'Клейм нет. Пока.'}</div>
     <div class="sx" style="margin-top:12px;text-align:center">обновлено ${timeAgo(m.updated_at)}</div>
   `);
@@ -1446,7 +1495,7 @@ function milestoneSheet(id) {
       ${m.custom && LEAGUE.joined() ? `<button class="btn grow" data-act="share-item" data-kind="milestone" data-id="${id}">${ico('users')} В лигу</button>` : ''}
       ${m.shared && m.author === LEAGUE.cfg().memberId ? `<button class="btn grow danger" data-act="unshare-item" data-id="${id}">Убрать из лиги</button>` : ''}
       ${date ? `<button class="btn danger grow" data-act="rm-ms" data-id="${id}" data-sheet="1">Снять отметку</button>`
-             : `<button class="btn primary grow" data-act="ms-done" data-id="${id}">${ico('check')} Выполнено сегодня</button>`}
+             : `<button class="btn ${m.sphere === 'shame' ? 'shamebtn' : 'primary'} grow" data-act="ms-done" data-id="${id}">${ico(m.sphere === 'shame' ? 'skull' : 'check')} ${m.sphere === 'shame' ? 'Было сегодня' : 'Выполнено сегодня'}</button>`}
     </div>
   `);
 }

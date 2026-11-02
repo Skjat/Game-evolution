@@ -523,6 +523,16 @@ h2.bad-h::before, h2.bad-h::after { background: linear-gradient(90deg, transpare
 .card > .redeem:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
 .redeem.ok { display: flex; align-items: center; gap: 6px; color: #5dffb0; }
 
+.ach.shame { border-color: rgba(157, 255, 58, .2); background: linear-gradient(180deg, rgba(16, 24, 6, .82), rgba(6, 8, 2, .9)); }
+.ach.shame::before { background: linear-gradient(90deg, transparent, #c8ff9a 30%, #fff 50%, #c8ff9a 70%, transparent); box-shadow: 0 0 6px var(--tox); }
+.ach.shame.got .badge::before { background: radial-gradient(circle at 50% 40%, #e8ffd0, var(--tox) 50%, #1c3300); }
+.ach.shame.got .badge::after { background: linear-gradient(160deg, #f4ffe8, var(--tox)); }
+.ach.shame.got .badge { filter: drop-shadow(0 0 10px rgba(157, 255, 58, .7)); animation: none; }
+.ach.shame.got .badge svg.i { color: #0a1400; }
+.ach.shame.got .ap { color: var(--tox); }
+.tag.shamewk { display: inline-flex; align-items: center; gap: 3px; color: var(--tox); border-color: rgba(157, 255, 58, .6); background: rgba(157, 255, 58, .08); }
+.tag.shamewk svg.i { width: 10px; height: 10px; }
+
 /* Удар: красно-ядовитая вспышка по краям и тряска */
 body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 44; opacity: 0;
   background: radial-gradient(ellipse at center, transparent 45%, rgba(157, 255, 58, .25) 75%, rgba(255, 31, 61, .55) 100%); }
