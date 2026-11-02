@@ -350,16 +350,19 @@ function ensureDay(k) {
   if (!d.b) d.b = [];
   return d;
 }
-function dayPoints(day) {
+// Очки дня: ручные + подвиги + штрафы за клейма, полученные (или снятые искуплением) в этот день.
+// Сами слабости очков не отнимают — они копят позор; параметры падают, когда набирается ступень клейма.
+function dayPoints(day, k) {
   const p = {};
-  if (!day) return p;
-  for (const id in day.m) p[id] = (p[id] || 0) + day.m[id];
-  for (const x of day.d || []) for (const id in x.r) p[id] = (p[id] || 0) + x.r[id];
-  for (const x of day.b || []) for (const id in x.r) p[id] = (p[id] || 0) + x.r[id];
+  if (day) {
+    for (const id in day.m) p[id] = (p[id] || 0) + day.m[id];
+    for (const x of day.d || []) for (const id in x.r) p[id] = (p[id] || 0) + x.r[id];
+  }
+  if (k) for (const e of brandEvents(k)) for (const id in e.r) p[id] = (p[id] || 0) + e.r[id];
   return p;
 }
-function dayTotal(day) {
-  const p = dayPoints(day);
+function dayTotal(day, k) {
+  const p = dayPoints(day, k);
   return S.stats.reduce((s, st) => s + (p[st.id] || 0), 0);
 }
 // День засчитывается в серию только за полезное: подвиги, плюсы, полезные счётчики, вехи. Слабости не в счёт.
@@ -369,14 +372,15 @@ function isActive(day) {
   if (Object.values(day.m || {}).some((v) => v > 0)) return true;
   return Object.keys(day.c || {}).some((id) => { const c = counterById(id); return c && !c.shame && day.c[id] > 0; });
 }
-// Сколько XP потеряно за день (слабости + отрицательные ручные очки).
-function dayLoss(day) {
-  if (!day) return 0;
+// Сколько XP потеряно за день (штрафы за клейма + отрицательные ручные очки).
+function dayLoss(day, k) {
   let l = 0;
-  for (const x of day.b || []) for (const id in x.r) if (statById(id)) l += Math.min(0, x.r[id]);
-  for (const id in day.m || {}) if (statById(id)) l += Math.min(0, day.m[id]);
+  if (k) for (const e of brandEvents(k)) if (!e.redeem) for (const id in e.r) if (statById(id)) l += Math.min(0, e.r[id]);
+  if (day) for (const id in day.m || {}) if (statById(id)) l += Math.min(0, day.m[id]);
   return l;
 }
+// Сколько раз за день поддался слабостям.
+const dayWeak = (day) => (day && day.b ? day.b.length : 0);
 
 /* ---------------------- Счётчики и вехи ---------------------- */
 
@@ -400,11 +404,52 @@ function dayCounters(day) {
 const REDEEM_DAYS = 14;
 function isLogged(day) { return !!day && (isActive(day) || (day.b || []).length > 0 || Object.keys(day.c || {}).length > 0 || !!(day.note || '').trim()); }
 
+/* Штрафы за клейма. Первая ступень клейма — предупреждение, дальше параметры падают:
+   основным параметрам слабости — полный штраф, остальным — половина. Искупление ступени возвращает очки. */
+const BRAND_PENALTY = [0, 5, 10, 20, 30, 50];
+const SHAME_MS_PENALTY = 10;
+const SHAME_MS_STATS = {
+  blackout: ['end', 'wis'], hangover_day: ['end', 'str'], cancel_plans: ['cha'], overslept_big: ['wis'],
+  asleep_at_work: ['int'], all_nighter: ['end', 'int'], forgot_birthday: ['cha'], rage_break: ['cha', 'wis'],
+  broke_before_payday: ['wis'], feast_day: ['end'], ghost_gym: ['str'], diet_crash: ['wis'],
+};
+const brandPenalty = (tier) => BRAND_PENALTY[Math.min(tier, BRAND_PENALTY.length - 1)];
+const fallbackStat = () => (statById('wis') ? 'wis' : S.stats[0] && S.stats[0].id);
+// Какие параметры страдают от цепочки позора: по слабостям, которые её пополняют.
+function brandWeights(cid) {
+  const w = {};
+  const seen = new Set();
+  for (const q of [...(S.debuffs || []), ...DEFAULT_DEBUFFS]) {
+    if (seen.has(q.id) || !(q.c && q.c[cid] > 0)) continue;
+    seen.add(q.id);
+    for (const id in q.rewards || {}) if (statById(id) && q.rewards[id] < 0) w[id] = (w[id] || 0) - q.rewards[id];
+  }
+  if (!Object.keys(w).length) { const f = fallbackStat(); if (f) w[f] = 1; }
+  return w;
+}
+function penaltyR(w, P, sign) {
+  const max = Math.max(...Object.values(w));
+  const r = {};
+  for (const id in w) r[id] = sign * (w[id] >= max ? P : Math.ceil(P / 2));
+  return r;
+}
+const brandEvents = (k) => computeCounters().pen[k] || [];
+// Штраф, который ждёт на следующей ступени цепочки позора.
+function nextBrand(cid) {
+  const c = counterById(cid);
+  if (!c) return null;
+  const v = counterTotals()[cid] || 0;
+  const i = c.tiers.findIndex((t) => v < t.goal);
+  if (i < 0) return null;
+  return { title: c.tiers[i].title, left: round1(c.tiers[i].goal - v), P: brandPenalty(i), r: penaltyR(brandWeights(cid), brandPenalty(i), -1) };
+}
+
 function computeCounters() {
   const key = todayKey();
   if (counterCache && counterCache.key === key) return counterCache;
-  const raw = {}, shame = {};
+  const raw = {}, shame = {}, pen = {}, msSeen = new Set();
   const shameList = counterList(S).filter(isShame);
+  const tierN = (sc, v) => sc.tiers.filter((t) => v >= t.goal).length;
   shameList.forEach((c) => { shame[c.id] = { value: 0, clean: 0, redeemed: 0, run: 0, maxRun: 0, lastInc: '', cleanRun: 0, relapse: '' }; });
   for (const k of Object.keys(S.log).sort()) {
     if (k > key) continue;
@@ -412,6 +457,7 @@ function computeCounters() {
     const c = dayCounters(day);
     for (const id in c) raw[id] = (raw[id] || 0) + c[id];
     const logged = isLogged(day);
+    for (const sc of shameList) shame[sc.id].pv = shame[sc.id].value;
     for (const sc of shameList) {
       const st = shame[sc.id], inc = c[sc.id] || 0;
       if (inc) {
@@ -438,11 +484,31 @@ function computeCounters() {
         st.clean = 0;
       }
     }
+    // Новые ступени клейма — штраф, снятые искуплением — возврат очков.
+    for (const sc of shameList) {
+      const st = shame[sc.id], a = tierN(sc, st.pv), b = tierN(sc, st.value);
+      if (a === b) continue;
+      const w = brandWeights(sc.id);
+      for (let j = Math.min(a, b); j < Math.max(a, b); j++) {
+        const P = brandPenalty(j);
+        if (!P) continue;
+        (pen[k] = pen[k] || []).push({ id: sc.id, title: sc.tiers[j].title, name: sc.name, redeem: b < a, r: penaltyR(w, P, b < a ? 1 : -1) });
+      }
+    }
+    // Позорные вехи — разовый штраф.
+    for (const id of day.ms || []) {
+      const m = milestoneById(id);
+      if (!m || m.sphere !== 'shame' || msSeen.has(id)) continue;
+      msSeen.add(id);
+      const ids = (SHAME_MS_STATS[id] || []).filter(statById);
+      const w = {}; (ids.length ? ids : [fallbackStat()].filter(Boolean)).forEach((x) => { w[x] = 1; });
+      if (Object.keys(w).length) (pen[k] = pen[k] || []).push({ id, title: m.name, name: 'позорная веха', ms: true, r: penaltyR(w, SHAME_MS_PENALTY, -1) });
+    }
   }
   for (const id in raw) raw[id] = Math.max(0, round1(raw[id]));
   const totals = { ...raw };
   shameList.forEach((c) => { totals[c.id] = shame[c.id].value; });
-  counterCache = { key, totals, raw, shame };
+  counterCache = { key, totals, raw, shame, pen };
   return counterCache;
 }
 function counterTotals() { return computeCounters().totals; }
@@ -462,6 +528,8 @@ function statXP() {
     const p = dayPoints(S.log[k]);
     for (const id in p) if (id in xp) xp[id] += p[id];
   }
+  const pen = computeCounters().pen;
+  for (const k in pen) for (const e of pen[k]) for (const id in e.r) if (id in xp) xp[id] += e.r[id];
   for (const id in xp) xp[id] = Math.max(0, xp[id]);
   return xp;
 }
@@ -513,7 +581,7 @@ function systemAchievementDefs() {
     const d = S.log[k];
     quests += (d.d || []).length;
     if (d.note && d.note.trim()) notes++;
-    bigDay = Math.max(bigDay, dayTotal(d));
+    bigDay = Math.max(bigDay, dayTotal(d, k));
   }
   const p = (v, goal) => ({ ok: v >= goal, v: Math.min(v, goal), goal });
   return [
@@ -586,7 +654,12 @@ function checkAchievements(silent) {
   else good.forEach((a, i) => setTimeout(() => toast(
     a.kind === 'tier' ? `${a.counter.name}: «${a.name}» · ${rarityOf(a.counter, a.tier).name}` : 'Достижение: ' + a.name,
     'gold', a.icon), i * 350));
-  bad.slice(0, 3).forEach((a, i) => setTimeout(() => toast(a.shameKind ? `Позор: «${a.name}»` : `Позор: ты теперь «${a.name}»`, 'shame', 'skull'), (good.length + i) * 350 + 200));
+  const penText = (a) => {
+    const ev = Object.values(computeCounters().pen).flat().find((e) => !e.redeem && e.title === a.name);
+    if (ev) return ' · ' + Object.entries(ev.r).filter(([id]) => statById(id)).map(([id, v]) => `−${Math.abs(v)} ${statById(id).name}`).join(', ');
+    return a.counter && a.tier === 0 ? ' · пока без штрафа' : '';
+  };
+  bad.slice(0, 3).forEach((a, i) => setTimeout(() => toast((a.shameKind ? `Позор: «${a.name}»` : `Позор: ты теперь «${a.name}»`) + penText(a), 'shame', 'skull'), (good.length + i) * 350 + 200));
   if (good.length) SFX.play('achieve');
   if (bad.length) setTimeout(() => SFX.play('fail'), good.length ? 450 : 0);
 }
@@ -698,11 +771,13 @@ function celebrate(ups, charLvl) {
 }
 
 // Удар по персонажу: красная вспышка, тряска, падающие минусы.
-function hurt(x, y, items) {
+function hurt(x, y, items, light = false) {
   SFX.play('fail');
-  document.body.classList.remove('hurt'); void document.body.offsetWidth; document.body.classList.add('hurt');
-  setTimeout(() => document.body.classList.remove('hurt'), 650);
-  fx('crack', x, y, '', '', 700);
+  if (!light) {
+    document.body.classList.remove('hurt'); void document.body.offsetWidth; document.body.classList.add('hurt');
+    setTimeout(() => document.body.classList.remove('hurt'), 650);
+    fx('crack', x, y, '', '', 700);
+  }
   items.forEach((it, i) => {
     const dx = (i - (items.length - 1) / 2) * 62;
     setTimeout(() => fx('float sink', x + dx, y, `color:${it.color}`, `${it.icon ? ico(it.icon) : ''}${esc(it.text)}`, 1300), i * 110);
@@ -815,7 +890,7 @@ function viewHero() {
   const total = totalXP(xp);
   const ch = levelInfo(total, charK());
   const tday = getDay(todayKey());
-  const today = dayPoints(tday);
+  const today = dayPoints(tday, todayKey());
   const streak = currentStreak();
   const todayDone = isActive(tday);
 
@@ -858,7 +933,7 @@ function viewHero() {
       </div>
     </div>
     ${todayDone
-      ? `<button class="cta done" data-act="go-today">${ico(TI().act)} ${esc(TT().done)} · ${sign(dayTotal(tday))} XP</button>`
+      ? `<button class="cta done" data-act="go-today">${ico(TI().act)} ${esc(TT().done)} · ${sign(dayTotal(tday, todayKey()))} XP</button>`
       : `<button class="cta" data-act="go-today">${ico(TI().tabs.day)} ${esc(TT().cta)}</button>`}
     ${S.stats.length >= 3 ? `<div class="card" style="padding:8px 6px 4px">${radarSVG(xp)}</div>` : ''}
     <h2>Параметры</h2>
@@ -866,10 +941,19 @@ function viewHero() {
   `;
 }
 
+// Подсказка на карточке слабости: сколько осталось до следующего клейма и чем оно грозит.
+function debuffHint(q) {
+  const cid = Object.keys(q.c || {}).find((id) => isShame(counterById(id)));
+  const nb = cid && nextBrand(cid);
+  if (!nb) return '<span>копит позор</span>';
+  const left = q.c[cid] > 0 ? Math.ceil(nb.left / q.c[cid]) : nb.left;
+  return `<span>ещё ${Math.max(1, left)} до клейма</span>${nb.P ? rewardsHTML(nb.r) : '<span>· без штрафа</span>'}`;
+}
+
 function viewDay() {
   const day = getDay(curDate) || { m: {}, d: [], note: '' };
-  const pts = dayPoints(day);
-  const total = dayTotal(day);
+  const pts = dayPoints(day, curDate);
+  const total = dayTotal(day, curDate);
   const isToday = curDate === todayKey();
   const counts = {};
   (day.d || []).forEach((x) => { counts[x.q] = (counts[x.q] || 0) + 1; });
@@ -889,15 +973,20 @@ function viewDay() {
       ${bcounts[q.id] ? `<span class="qc">${bcounts[q.id] > 1 ? '×' + bcounts[q.id] : '!'}</span>` : ''}
       <span class="qi">${ico(q.icon)}</span>
       <span class="qn">${esc(q.name)}</span>
-      <span class="qr">${rewardsHTML(q.rewards)}</span>
+      <span class="qr">${debuffHint(q)}</span>
     </button>`).join('');
   const bdone = (day.b || []).map((x, i) => `
     <div class="done-item bad">
       <span class="qi">${ico(x.i)}</span>
-      <div class="grow"><div style="font-weight:600;font-size:14px">${esc(x.n)}</div><span class="qr" style="margin-top:3px">${rewardsHTML(x.r)}</span></div>
+      <div class="grow"><div style="font-weight:600;font-size:14px">${esc(x.n)}</div><span class="small muted">${Object.entries(x.c || {}).filter(([cid]) => counterById(cid)).map(([cid, v]) => `${esc(counterById(cid).name)} +${fmtNum(v)}`).join(' · ') || 'без последствий'}</span></div>
       <button class="icon-btn" data-act="undo-debuff" data-idx="${i}" aria-label="Отменить">✕</button>
     </div>`).join('');
-  const loss = dayLoss(day);
+  const brands = brandEvents(curDate).map((e) => `
+    <div class="done-item ${e.redeem ? '' : 'bad'}">
+      <span class="qi">${ico(e.redeem ? TI().magic : 'skull')}</span>
+      <div class="grow"><div style="font-weight:600;font-size:14px">${e.redeem ? 'Искупление' : e.ms ? 'Позорная веха' : 'Клеймо'} «${esc(e.title)}»</div><span class="qr" style="margin-top:3px">${rewardsHTML(e.r)}</span></div>
+    </div>`).join('');
+  const loss = dayLoss(day, curDate);
 
   const done = (day.d || []).map((x, i) => `
     <div class="done-item">
@@ -945,7 +1034,7 @@ function viewDay() {
     <div class="card sweep center">
       <div class="daytotal ${total < 0 ? 'neg' : ''}" id="daytotal">${total > 0 ? '+' : ''}${total} XP</div>
       <div class="small muted">${total < 0 ? 'день в минусе — ядро теряет энергию' : total ? 'энергии получено за день' : 'Отметь, что сделал сегодня, — и ядро зарядится'}</div>
-      ${loss ? `<div class="lossline">${ico('arrowDown')} потеряно ${loss} XP на слабостях</div>` : ''}
+      ${loss ? `<div class="lossline">${ico('arrowDown')} потеряно ${loss} XP на клеймах</div>` : ''}
     </div>
     <button class="cta ai-cta" data-act="ai-open">${ico('mic')} Рассказать о дне ИИ</button>
     ${progress ? `<h2>Прогресс достижений</h2><div class="card">${progress}</div>` : ''}
@@ -953,9 +1042,9 @@ function viewDay() {
     <div class="quests">${quests}</div>
     ${done ? `<div class="card" style="margin-top:12px">${done}</div>` : ''}
     <h2 class="bad-h">Слабости дня</h2>
-    <div class="small muted" style="margin:-4px 2px 10px">Честно отметь, где сорвался. Штраф вдвое сильнее награды — и пополняет коллекцию позора.</div>
+    <div class="small muted" style="margin:-4px 2px 10px">Честно отметь, где сорвался. Слабость копит позор, а параметры падают, когда набирается новая ступень клейма. 14 чистых дней снимают ступень и возвращают очки.</div>
     <div class="quests">${debuffs}</div>
-    ${bdone ? `<div class="card bad-card" style="margin-top:12px">${bdone}</div>` : ''}
+    ${bdone || brands ? `<div class="card bad-card" style="margin-top:12px">${brands}${bdone}</div>` : ''}
     <h2>Ручное начисление</h2>
     ${rows}
     <h2>Заметка дня</h2>
@@ -969,8 +1058,8 @@ function viewHistory() {
   for (let i = histRange - 1; i >= 0; i--) days.push(addDays(t, -i));
 
   const W = 340, H = 180, padL = 26, padB = 22, padT = 10;
-  const totals = days.map((k) => { const p = dayPoints(getDay(k)); return S.stats.map((s) => Math.max(0, p[s.id] || 0)); });
-  const losses = days.map((k) => dayLoss(getDay(k)));
+  const totals = days.map((k) => { const p = dayPoints(getDay(k), k); return S.stats.map((s) => Math.max(0, p[s.id] || 0)); });
+  const losses = days.map((k) => dayLoss(getDay(k), k));
   const maxV = Math.max(5, ...totals.map((a) => a.reduce((x, y) => x + y, 0)));
   const minV = Math.min(0, ...losses);
   const bw = (W - padL) / days.length;
@@ -1009,12 +1098,12 @@ function viewHistory() {
 
   const list = Object.keys(S.log).filter((k) => isActive(S.log[k]) || (S.log[k].b || []).length || (S.log[k].note || '').trim()).sort().reverse().slice(0, 60).map((k) => {
     const d = S.log[k];
-    const p = dayPoints(d);
+    const p = dayPoints(d, k), dt = dayTotal(d, k);
     const chips = S.stats.filter((s) => p[s.id]).map((s) => `<span class="chip" style="color:${s.color}">${ico(s.icon)}${sign(p[s.id])}</span>`).join('');
     const note = (d.note || '').trim();
     return `
       <button class="card hday" data-act="open-day" data-k="${k}">
-        <div class="row between"><b>${humanDate(k)}</b><span class="${dayTotal(d) < 0 ? 'today-minus' : 'today-plus'}">${sign(dayTotal(d))} XP</span></div>
+        <div class="row between"><b>${humanDate(k)}</b><span class="${dt < 0 ? 'today-minus' : 'today-plus'}">${sign(dt)} XP</span></div>
         ${chips ? `<div class="chips">${chips}</div>` : ''}
         ${(d.d || []).length ? `<div class="ic">${d.d.map((x) => ico(x.i)).join('')}</div>` : ''}
         ${(d.b || []).length ? `<div class="ic bad">${d.b.map((x) => ico(x.i)).join('')}</div>` : ''}
@@ -1235,15 +1324,15 @@ function weekStartKey(k) { const d = parseKey(k); return addDays(k, -((d.getDay(
 // Сводка игрока для лиги — единственное, что уходит на сервер.
 function leagueProfile() {
   const t = todayKey(), ws = weekStartKey(t), pws = addDays(ws, -7);
-  let week = 0, loss = 0, last = 0, lastLoss = 0;
+  let week = 0, loss = 0, last = 0, lastLoss = 0, weak = 0, lastWeak = 0;
   const src = { quests: 0, manual: 0, penalties: 0 };
   for (const k in S.log) {
     const d = S.log[k];
     if (k >= ws && k <= t) {
-      week += dayTotal(d); loss += dayLoss(d);
+      week += dayTotal(d, k); loss += dayLoss(d, k); weak += dayWeak(d);
       for (const x of d.d || []) for (const id in x.r) if (statById(id)) src.quests += x.r[id];
       for (const id in d.m || {}) if (statById(id) && d.m[id] > 0) src.manual += d.m[id];
-    } else if (k >= pws && k < ws) { last += dayTotal(d); lastLoss += dayLoss(d); }
+    } else if (k >= pws && k < ws) { last += dayTotal(d, k); lastLoss += dayLoss(d, k); lastWeak += dayWeak(d); }
   }
   src.penalties = loss;
   const xp = statXP(), total = totalXP(xp), ch = levelInfo(total, charK());
@@ -1253,11 +1342,11 @@ function leagueProfile() {
     return top ? { t: top.title, g: top.goal } : null;
   }).filter(Boolean).sort((a, b) => b.g - a.g).slice(0, 4).map((x) => x.t);
   return {
-    v: 1, level: ch.level, title: titleFor(ch.level), xp: total, week, weekLoss: loss, weekStart: ws, lastWeek: last, lastWeekLoss: lastLoss, lastWeekStart: pws,
+    v: 1, level: ch.level, title: titleFor(ch.level), xp: total, week, weekLoss: loss, weekWeak: weak, weekStart: ws, lastWeek: last, lastWeekLoss: lastLoss, lastWeekWeak: lastWeak, lastWeekStart: pws,
     streak: currentStreak(), best: bestStreak(), ach: all.filter((a) => a.kind !== 'shame' && a.ok).length,
     shame: all.filter((a) => a.kind === 'shame' && a.ok).length, shameTitles,
     stats: S.stats.slice(0, 8).map((s) => ({ n: s.name, i: s.icon, c: s.color, l: levelInfo(xp[s.id], STAT_K).level })),
-    src, today: dayTotal(getDay(t)), day: t,
+    src, today: dayTotal(getDay(t), t), day: t,
   };
 }
 
@@ -1300,9 +1389,11 @@ const miniAvatar = (icon, cls = '') => `<span class="mav ${cls}">${ico(icon || '
 // «Позор недели»: кто больше всех потерял на слабостях за прошлую неделю. Титул держится до следующего понедельника.
 function shameOfWeek(members) {
   const pws = addDays(weekStartKey(todayKey()), -7);
-  const lastLoss = (p) => (p.weekStart === pws ? p.weekLoss || 0 : p.lastWeekStart === pws ? p.lastWeekLoss || 0 : 0);
-  const worst = members.filter((m) => lastLoss(m.p) < 0).sort((a, b) => lastLoss(a.p) - lastLoss(b.p))[0];
-  return worst ? { id: worst.id, loss: lastLoss(worst.p) } : null;
+  const pick = (p, f, lf) => (p.weekStart === pws ? p[f] || 0 : p.lastWeekStart === pws ? p[lf] || 0 : 0);
+  const lastLoss = (p) => pick(p, 'weekLoss', 'lastWeekLoss'), lastWeak = (p) => pick(p, 'weekWeak', 'lastWeekWeak');
+  const worst = members.filter((m) => lastWeak(m.p) > 0 || lastLoss(m.p) < 0)
+    .sort((a, b) => lastWeak(b.p) - lastWeak(a.p) || lastLoss(a.p) - lastLoss(b.p))[0];
+  return worst ? { id: worst.id, loss: lastLoss(worst.p), weak: lastWeak(worst.p) } : null;
 }
 
 function leagueRows(board) {
@@ -1322,9 +1413,9 @@ function leagueRows(board) {
     const p = m.p, me = m.id === board.me;
     let big, sub;
     if (leagueMode === 'week') {
-      const v = weekVal(p), l = p.weekStart === ws ? p.weekLoss || 0 : 0;
+      const v = weekVal(p), l = p.weekStart === ws ? p.weekLoss || 0 : 0, wk = p.weekStart === ws ? p.weekWeak || 0 : 0;
       big = `<span class="${v < 0 ? 'neg' : ''}">${sign(v)}</span><small>XP</small>`;
-      sub = `${esc(p.title || 'Новичок')} · ур. ${p.level || 1}${l ? ` · <span class="tox">${l} на слабостях</span>` : ''}`;
+      sub = `${esc(p.title || 'Новичок')} · ур. ${p.level || 1}${wk || l ? ` · <span class="tox">слабостей ${wk}${l ? `, ${l} XP` : ''}</span>` : ''}`;
     } else if (leagueMode === 'level') {
       big = `${p.level || 1}<small>ур.</small>`;
       sub = `${esc(p.title || 'Новичок')} · ${fmt(p.xp || 0)} XP`;
@@ -1436,7 +1527,7 @@ function memberSheet(id) {
       <div class="row between"><span>Вручную</span><b>+${src.manual || 0}</b></div>
       <div class="row between tox"><span>Слабости и штрафы</span><b>${src.penalties || 0}</b></div></div>` : ''}
     <h2 class="bad-h">Позор</h2>
-    ${loser && loser.id === m.id ? `<div class="card small shame-intro" style="margin-bottom:8px">${ico('skull')}<div><b class="tox">Позор недели</b><div class="muted">Больше всех потерял на слабостях за прошлую неделю: ${loser.loss} XP</div></div></div>` : ''}
+    ${loser && loser.id === m.id ? `<div class="card small shame-intro" style="margin-bottom:8px">${ico('skull')}<div><b class="tox">Позор недели</b><div class="muted">Больше всех слабостей за прошлую неделю: ${loser.weak}${loser.loss ? ` · штрафы за клейма ${loser.loss} XP` : ''}</div></div></div>` : ''}
     <div class="card small">${(p.shameTitles || []).length ? `<span class="tox">${ico('skull')} ${p.shameTitles.map(esc).join(' · ')}</span><div class="muted" style="margin-top:6px">Всего клейм: ${p.shame || 0}</div>` : 'Клейм нет. Пока.'}</div>
     <div class="sx" style="margin-top:12px;text-align:center">обновлено ${timeAgo(m.updated_at)}</div>
   `);
@@ -1511,7 +1602,7 @@ function questEditor(id, kind = 'quest') {
     <input type="text" id="q-name" value="${esc(q.name)}" maxlength="40" placeholder="${bad ? 'Например, Ночной дожор' : 'Например, Холодный душ'}">
     <label class="f">Символ</label>
     ${iconPicker(q.icon)}
-    <label class="f">${bad ? 'Штраф (обычно вдвое больше награды за похожее полезное дело)' : 'Награда'}</label>
+    <label class="f">${bad ? 'По каким параметрам бьют клейма (сильнее — полный штраф, слабее — половина)' : 'Награда'}</label>
     ${S.stats.map((s) => {
       const v = q.rewards[s.id] || 0;
       return `
@@ -1931,7 +2022,7 @@ function aiResultHTML(head) {
   const qs = r.quests.map((x) => { const q = S.quests.find((y) => y.id === x.id);
     return row('q:' + x.id, ico(q.icon), esc(q.name) + (x.count > 1 ? ' ×' + x.count : ''), rewardsHTML(Object.fromEntries(Object.entries(q.rewards).map(([k, v]) => [k, v * x.count]))), 'var(--ic)'); }).join('');
   const bs = (r.debuffs || []).map((x) => { const q = (S.debuffs || []).find((y) => y.id === x.id);
-    return q ? row('b:' + x.id, ico(q.icon), esc(q.name) + (x.count > 1 ? ' ×' + x.count : ''), rewardsHTML(Object.fromEntries(Object.entries(q.rewards).map(([k, v]) => [k, v * x.count]))), 'var(--tox)') : ''; }).join('');
+    return q ? row('b:' + x.id, ico(q.icon), esc(q.name) + (x.count > 1 ? ' ×' + x.count : ''), debuffHint(q), 'var(--tox)') : ''; }).join('');
   const st = r.stats.map((x) => { const s = statById(x.id);
     return row('s:' + x.id, ico(s.icon), `${esc(s.name)} <b style="color:${s.color}">${sign(x.points)}</b>`, esc(x.reason), s.color); }).join('');
   const cs = r.counters.map((x) => { const c = counterById(x.id);
@@ -2011,6 +2102,7 @@ function aiApply() {
   const note = ($('#ai-note') || {}).value || '';
   const gained = {};
   const created = [];
+  const nBefore = brandEvents(curDate).length;
   mutate(() => {
     const day = ensureDay(curDate);
     r.quests.forEach((x) => {
@@ -2024,11 +2116,10 @@ function aiApply() {
       const q = S.debuffs.find((y) => y.id === x.id);
       if (!q) return;
       for (let i = 0; i < x.count; i++) day.b.push({ q: q.id, n: q.name, i: q.icon, r: clone(q.rewards), c: clone(q.c || {}) });
-      LEAGUE.push({ kind: 'debuff', text: `сорвался: ${q.name}${x.count > 1 ? ' ×' + x.count : ''} (${Object.values(q.rewards).reduce((a, v) => a + v, 0) * x.count} XP)`, icon: q.icon });
-      Object.entries(q.rewards).forEach(([k, v]) => { gained[k] = (gained[k] || 0) + v * x.count; });
+      LEAGUE.push({ kind: 'debuff', text: `сорвался: ${q.name}${x.count > 1 ? ' ×' + x.count : ''}`, icon: q.icon });
     });
     r.stats.forEach((x) => {
-      if (!ai.sel['s:' + x.id]) return;
+      if (!ai.sel['s:' + x.id] || x.points <= 0) return;   // очки за вред не снимаются — только клейма
       day.m[x.id] = clamp((day.m[x.id] || 0) + x.points, -50, 99);
       if (!day.m[x.id]) delete day.m[x.id];
       gained[x.id] = (gained[x.id] || 0) + x.points;
@@ -2051,6 +2142,7 @@ function aiApply() {
     });
     if (note.trim()) day.note = day.note && day.note.trim() ? day.note.trim() + '\n' + note.trim() : note.trim();
   });
+  brandEvents(curDate).slice(nBefore).forEach((ev) => { for (const k in ev.r) gained[k] = (gained[k] || 0) + ev.r[k]; });
   const shareNew = !!ai.sel.share && LEAGUE.joined();
   closeSheet();
   ai = { phase: 'input', text: '', result: null, sel: {}, error: '' };
@@ -2240,13 +2332,18 @@ document.addEventListener('click', (e) => {
       const q = (S.debuffs || []).find((x) => x.id === id);
       if (!q) break;
       const [x, y] = [e.clientX || centerOf(el)[0], e.clientY || centerOf(el)[1]];
-      LEAGUE.push({ kind: 'debuff', text: `сорвался: ${q.name} (${Object.values(q.rewards).reduce((a, v) => a + v, 0)} XP)`, icon: q.icon });
+      LEAGUE.push({ kind: 'debuff', text: `сорвался: ${q.name}`, icon: q.icon });
+      const nBefore = brandEvents(curDate).length;
       mutate(() => { ensureDay(curDate).b.push({ q: q.id, n: q.name, i: q.icon, r: clone(q.rewards), c: clone(q.c || {}) }); });
       const card = $(`[data-act=debuff][data-id="${id}"]`);
       if (card) card.classList.add('hit');
-      const dt = $('#daytotal'); if (dt) dt.classList.add('bump');
-      hurt(x, y - 20, Object.entries(q.rewards).filter(([sid, v]) => v && statById(sid))
-        .map(([sid, v]) => ({ icon: statById(sid).icon, text: sign(v), color: 'var(--tox)' })));
+      const fresh = brandEvents(curDate).slice(nBefore).filter((ev) => !ev.redeem);
+      const hit = {};
+      fresh.forEach((ev) => { for (const sid in ev.r) hit[sid] = (hit[sid] || 0) + ev.r[sid]; });
+      const items = Object.entries(hit).filter(([sid, v]) => v && statById(sid)).map(([sid, v]) => ({ icon: statById(sid).icon, text: sign(v), color: 'var(--tox)' }));
+      if (items.length) { const dt = $('#daytotal'); if (dt) dt.classList.add('bump'); }
+      hurt(x, y - 20, items.length ? items : Object.keys(q.c || {}).filter((cid) => counterById(cid)).slice(0, 2)
+        .map((cid) => ({ icon: counterById(cid).icon, text: '+' + fmtNum(q.c[cid]) + ' позора', color: 'var(--tox)' })), !items.length);
       break;
     }
     case 'undo-debuff':

@@ -61,7 +61,7 @@ const AI = (() => {
     S.stats.forEach((s) => lines.push(`- ${s.id} — ${s.name}`));
     lines.push('', 'QUESTS (id — name | stat rewards | counters added automatically):');
     S.quests.forEach((q) => lines.push(`- ${q.id} — ${q.name} | ${fmtRewards(q.rewards, S.stats)} | ${Object.entries(q.c || {}).map(([k, v]) => `${k} +${v}`).join(', ') || '—'}`));
-    lines.push('', 'DEBUFFS — harmful actions (id — name | stat penalties | counters added automatically):');
+    lines.push('', 'DEBUFFS — harmful actions (id — name | stats hit when a shame brand is reached | counters added automatically):');
     (S.debuffs || []).forEach((q) => lines.push(`- ${q.id} — ${q.name} | ${fmtRewards(q.rewards, S.stats)} | ${Object.entries(q.c || {}).map(([k, v]) => `${k} +${v}`).join(', ') || '—'}`));
     lines.push('', 'COUNTERS (id — name, unit | sphere | what counts, for counters the player created). Sphere "shame" = bad-habit counters:');
     counterList(S).forEach((c) => lines.push(`- ${c.id} — ${c.name}, ${c.unit} | ${c.sphere}${c.custom ? ' | player-made' + (c.desc ? ': ' + c.desc : '') : ''}`));
@@ -75,8 +75,8 @@ const AI = (() => {
 
 How to fill the answer:
 - quests: activities that clearly match a quest from the catalogue, with count (usually 1). Quest stat rewards and the counters linked to a quest are added automatically — never repeat them in stats or counters.
-- debuffs: harmful things the player admits doing that match a debuff from the catalogue (junk food, alcohol, skipped workout, hours lost in the phone…), with count. Their penalties and shame counters are applied automatically — never repeat them in stats or counters.
-- stats: extra points for meaningful effort that no quest covers. Usually 1–3 points, up to 5 for an exceptional effort. Nothing for passive or trivial things. Harmful behaviour that no debuff covers gets negative points, and a penalty is twice as heavy as the reward for the comparable good action (for example −2 to −10). Give a short reason in Russian.
+- debuffs: harmful things the player admits doing that match a debuff from the catalogue (junk food, alcohol, skipped workout, hours lost in the phone…), with count. Their shame counters are applied automatically — never repeat them in stats or counters.
+- stats: extra points for meaningful effort that no quest covers. Usually 1–3 points, up to 5 for an exceptional effort. Nothing for passive or trivial things. Points are always positive: never take stat points away for harmful behaviour — record it as debuffs or shame counters instead; the game lowers stats by itself when a shame brand tier is reached. Give a short reason in Russian.
 - counters: increments of lifetime counters in the counter's unit (km, hours, pieces). Count only what the player states or what clearly follows from it: "пробежал 7 км" → run_km 7; "дочитал книгу" → books 1; "позанимался английским" → lang 1. Bad habits go to "shame" counters ("зависал в тиктоке 3 часа" → doomscroll 3). Skip counters already added by the chosen quests or debuffs. Give a short reason in Russian.
 - milestones: one-time life achievements, only when the player clearly accomplished one today and it is not in the list of already unlocked milestones. Give a short reason in Russian.
   Milestones in the "shame" sphere are embarrassing one-time failures (blackout drunk, forgot a birthday, slept through something important): record one only when the player plainly admits it happened today.
@@ -182,9 +182,9 @@ ${catalogue(S)}`;
       const p = Math.round(Number(x.points) || 0);
       if (!p) return;
       const prev = sMap[x.id];
-      sMap[x.id] = { id: x.id, points: Math.max(-10, Math.min(10, (prev ? prev.points : 0) + p)), reason: [prev && prev.reason, str(x.reason, 160)].filter(Boolean).join('; ') };
+      sMap[x.id] = { id: x.id, points: Math.max(0, Math.min(10, (prev ? prev.points : 0) + p)), reason: [prev && prev.reason, str(x.reason, 160)].filter(Boolean).join('; ') };
     });
-    out.stats = Object.values(sMap);
+    out.stats = Object.values(sMap).filter((x) => x.points > 0);   // за вред очки не снимаются — для этого клейма
 
     const cMap = {};
     arr(r.counters).forEach((x) => {

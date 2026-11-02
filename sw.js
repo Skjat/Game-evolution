@@ -1,5 +1,5 @@
 // Service worker: offline-кэш. При изменении файлов увеличивай VERSION.
-const VERSION = 'lvlup-v13';
+const VERSION = 'lvlup-v14';
 const ASSETS = [
   './',
   './index.html',
