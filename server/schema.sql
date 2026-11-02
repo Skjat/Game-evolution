@@ -36,3 +36,14 @@ CREATE TABLE IF NOT EXISTS reactions (
   created_at INTEGER NOT NULL,
   PRIMARY KEY (event_id, member, kind)
 );
+
+-- Общие достижения лиги: цепочки и вехи, которыми участник поделился с друзьями.
+CREATE TABLE IF NOT EXISTS items (
+  id         TEXT NOT NULL,
+  league     TEXT NOT NULL,
+  author     TEXT NOT NULL,
+  kind       TEXT NOT NULL,          -- 'counter' | 'milestone'
+  data       TEXT NOT NULL,          -- JSON: name, unit, desc, icon, sphere, tiers
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (league, id)
+);

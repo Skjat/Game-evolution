@@ -174,6 +174,7 @@ function defaultState() {
     ach: {},   // achievementId -> dateKey
     settings: { sound: true },
     custom: { counters: [], milestones: [] },   // свои достижения игрока
+    shared: { counters: [], milestones: [] },   // общие достижения лиги (приходят с сервера)
     created: todayKey(),
   };
 }
@@ -206,6 +207,7 @@ function migrate(s) {
   if (v < 4 && !Array.isArray(s.debuffs)) s.debuffs = clone(DEFAULT_DEBUFFS);
   s.settings = Object.assign({ sound: true }, s.settings || {});
   s.custom = Object.assign({ counters: [], milestones: [] }, s.custom || {});
+  s.shared = Object.assign({ counters: [], milestones: [] }, s.shared || {});
   s.v = DATA_VERSION;
   return s;
 }
@@ -956,7 +958,7 @@ function viewAch() {
       return `<div class="card chain ${isShame(c) ? 'shame' : ''}">
         <div class="row">
           <div class="sico" style="color:${sp.color}">${ico(c.icon)}</div>
-          <div class="grow"><div class="sn">${esc(c.name)}${c.custom ? '<span class="tag">своё</span>' : ''}</div>
+          <div class="grow"><div class="sn">${esc(c.name)}${c.custom ? '<span class="tag">своё</span>' : ''}${c.shared ? `<span class="tag lg">лига${c.authorName ? ' · ' + esc(c.authorName) : ''}</span>` : ''}</div>
             <div class="sx"><b class="cv">${fmtNum(v)}</b> ${c.unit}${next ? ` · далее «${esc(next.title)}» на ${fmtNum(next.goal)}` : ' · все ступени пройдены'}</div></div>
           <button class="icon-btn" data-act="counter" data-id="${c.id}" aria-label="Добавить">+</button>
         </div>
@@ -977,7 +979,9 @@ function viewAch() {
         <div class="ad">${esc(m.desc || '')}</div>
         <div class="ap">${md[m.id] ? '✓ ' + shortDate(md[m.id]) : 'не открыто'}${m.custom ? ' · своё' : ''}</div>
       </button>`).join('');
-    body = achSphere === 'shame' ? `
+    if (achSphere === 'league' && !counterList(S).some((c) => c.sphere === 'league') && !milestoneList(S).some((m) => m.sphere === 'league')) {
+      body = `<div class="empty">${ico('users')}<div>${LEAGUE.joined() ? 'Общих достижений пока нет. Создай своё в любой сфере и включи «Поделиться с лигой» — или открой карточку своего достижения и нажми «В лигу».' : 'Вступи в лигу, чтобы здесь появились общие достижения друзей.'}</div></div>`;
+    } else body = achSphere === 'shame' ? `
       <div class="card shame-intro">${ico('skull')}<div><b>Коллекция позора: ${shameGot}</b><div class="small muted">Клейма даются за слабости. Искупление: ${REDEEM_DAYS} дней без слабости (в дни, когда отмечаешь итоги) снимают одну ступень. Срыв обнуляет отсчёт.</div></div></div>
       <h2 class="bad-h">Клейма</h2>${chains}
       <button class="btn block add-own" data-act="add-cc">${ico('sparkle')} Своя цепочка позора</button>` : `<h2>Цепочки</h2>${chains}
@@ -1126,7 +1130,8 @@ async function syncNow() {
   if (!LEAGUE.joined() || syncing) return;
   syncing = true;
   try {
-    await LEAGUE.sync({ name: S.profile.name, avatar: S.profile.avatar, profile: leagueProfile() });
+    const board = await LEAGUE.sync({ name: S.profile.name, avatar: S.profile.avatar, profile: leagueProfile() });
+    if (applySharedItems(board) && tab === 'ach') render(false);
   } catch (e) {
     LEAGUE.set({ error: e.status === 401 ? 'Сервер больше не узнаёт тебя: восстанови доступ кодом или вступи заново' : e.message });
   }
@@ -1416,8 +1421,11 @@ function counterSheet(id) {
       return `<div class="tier ${total >= t.goal ? 'on' : ''}" style="--r:${r.color}"><span class="hx">${ico(total >= t.goal ? c.icon : 'sparkle')}</span><b>${fmtNum(t.goal)}</b><em>${esc(t.title)}</em></div>`;
     }).join('')}</div>
     ${c.desc ? `<div class="small muted" style="margin-top:14px">Что считается: ${esc(c.desc)}</div>` : ''}
+    ${c.shared ? `<div class="small muted" style="margin-top:6px">Общее достижение лиги · добавил ${esc(c.authorName || 'участник лиги')}</div>` : ''}
     <div class="row" style="margin-top:16px">
       ${c.custom ? `<button class="btn grow" data-act="edit-cc" data-id="${id}">Изменить</button>` : ''}
+      ${c.custom && LEAGUE.joined() ? `<button class="btn grow" data-act="share-item" data-kind="counter" data-id="${id}">${ico('users')} В лигу</button>` : ''}
+      ${c.shared && c.author === LEAGUE.cfg().memberId ? `<button class="btn grow danger" data-act="unshare-item" data-id="${id}">Убрать из лиги</button>` : ''}
       <button class="btn grow" data-act="close-sheet">Готово</button>
     </div>
   `);
@@ -1431,10 +1439,12 @@ function milestoneSheet(id) {
       <div class="ach ${date ? 'got' : 'locked'}" style="padding:6px 0 0"><div class="badge" style="width:84px;height:84px">${ico(m.icon)}</div></div>
       <h1 style="margin:8px 0 4px">${esc(m.name)}</h1>
       <div class="muted">${esc(m.desc || '')}</div>
-      <div class="sx" style="margin-top:8px">${sphereById(m.sphere).name} · ${date ? 'открыто ' + shortDate(date) : 'ещё не открыто'}${m.custom ? ' · своё' : ''}</div>
+      <div class="sx" style="margin-top:8px">${sphereById(m.sphere).name} · ${date ? 'открыто ' + shortDate(date) : 'ещё не открыто'}${m.custom ? ' · своё' : ''}${m.shared ? ' · общее, добавил ' + esc(m.authorName || 'участник лиги') : ''}</div>
     </div>
     <div class="row" style="margin-top:20px">
       ${m.custom ? `<button class="btn grow" data-act="edit-cm" data-id="${id}">Изменить</button>` : `<button class="btn grow" data-act="close-sheet">Закрыть</button>`}
+      ${m.custom && LEAGUE.joined() ? `<button class="btn grow" data-act="share-item" data-kind="milestone" data-id="${id}">${ico('users')} В лигу</button>` : ''}
+      ${m.shared && m.author === LEAGUE.cfg().memberId ? `<button class="btn grow danger" data-act="unshare-item" data-id="${id}">Убрать из лиги</button>` : ''}
       ${date ? `<button class="btn danger grow" data-act="rm-ms" data-id="${id}" data-sheet="1">Снять отметку</button>`
              : `<button class="btn primary grow" data-act="ms-done" data-id="${id}">${ico('check')} Выполнено сегодня</button>`}
     </div>
@@ -1457,9 +1467,100 @@ function redeemHTML(c) {
   </div>`;
 }
 
+/* ---------------------- Общие достижения лиги ---------------------- */
+
+const itemData = (x, kind) => ({
+  name: x.name, desc: x.desc || '', icon: x.icon || 'star', sphere: x.home || x.sphere,
+  ...(kind === 'counter' ? { unit: x.unit, tiers: x.tiers.map((t) => ({ goal: t.goal, title: t.title })) } : {}),
+});
+
+// Привести список с сервера к общим достижениям на телефоне.
+function applySharedItems(board) {
+  if (!board || !Array.isArray(board.items)) return false;
+  const names = Object.fromEntries((board.members || []).map((m) => [m.id, m.name]));
+  const next = { counters: [], milestones: [] };
+  for (const it of board.items) {
+    const d = it.data || {};
+    const home = SPHERES.find((sp) => sp.id === d.sphere && sp.id !== 'system' && sp.id !== 'league') ? d.sphere : 'adventure';
+    const base = { id: it.id, name: String(d.name || 'Достижение'), desc: String(d.desc || ''), icon: ICONS[d.icon] ? d.icon : 'star',
+      sphere: home === 'shame' ? 'shame' : 'league', home, shared: true, author: it.author, authorName: names[it.author] || it.authorName || '' };
+    if (it.kind === 'counter') {
+      const tiers = (d.tiers || []).filter((t) => t && t.goal > 0).map((t) => ({ goal: Number(t.goal), title: String(t.title || '') }));
+      if (tiers.length) next.counters.push({ ...base, unit: String(d.unit || 'раз'), tiers, shame: home === 'shame' });
+    } else next.milestones.push(base);
+  }
+  const ids = new Set([...next.counters, ...next.milestones].map((x) => x.id));
+  // Своё достижение, которое уже в лиге, больше не дублируем как «своё».
+  const custom = {
+    counters: S.custom.counters.filter((c) => !ids.has(c.id)),
+    milestones: S.custom.milestones.filter((m) => !ids.has(m.id)),
+  };
+  // Достижение убрали из лиги: если по нему есть прогресс — оставляем его себе как своё.
+  const totals = counterTotals(), md = milestoneDates();
+  S.shared.counters.filter((c) => !ids.has(c.id) && (totals[c.id] || 0) > 0)
+    .forEach((c) => custom.counters.push({ ...c, sphere: c.home || 'adventure', shared: false, custom: true }));
+  S.shared.milestones.filter((m) => !ids.has(m.id) && md[m.id])
+    .forEach((m) => custom.milestones.push({ ...m, sphere: m.home || 'adventure', shared: false, custom: true }));
+  const changed = JSON.stringify(next) !== JSON.stringify(S.shared) || JSON.stringify(custom) !== JSON.stringify(S.custom);
+  if (changed) {
+    S.shared = next; S.custom = custom;
+    save();
+    checkAchievements(true);
+  }
+  return changed;
+}
+
+async function shareItem(id, kind) {
+  const list = kind === 'counter' ? S.custom.counters : S.custom.milestones;
+  const x = list.find((y) => y.id === id);
+  if (!x || !LEAGUE.joined()) return;
+  try {
+    const board = await LEAGUE.share(id, kind, itemData(x, kind));
+    applySharedItems(board);
+    toast(`«${x.name}» теперь в лиге`, 'gold', 'users');
+    SFX.play('confirm');
+    if (!$('#sheet').classList.contains('hidden')) closeSheet();
+    render(false);
+  } catch (e) {
+    toast('Не удалось поделиться: ' + e.message);
+  }
+}
+
+async function unshareItem(id) {
+  try {
+    const board = await LEAGUE.unshare(id);
+    // Своё достижение возвращается в «свои» вместе с прогрессом.
+    const c = S.shared.counters.find((x) => x.id === id), m = S.shared.milestones.find((x) => x.id === id);
+    if (c) { S.shared.counters = S.shared.counters.filter((x) => x.id !== id); S.custom.counters.push({ ...c, sphere: c.home || 'adventure', shared: false, custom: true }); }
+    if (m) { S.shared.milestones = S.shared.milestones.filter((x) => x.id !== id); S.custom.milestones.push({ ...m, sphere: m.home || 'adventure', shared: false, custom: true }); }
+    save();
+    applySharedItems(board);
+    closeSheet();
+    toast('Убрано из лиги — осталось в твоих достижениях');
+    render(false);
+  } catch (e) {
+    toast('Не удалось убрать: ' + e.message);
+  }
+}
+
+// При выходе из лиги общие достижения с прогрессом становятся своими.
+function sharedToCustomOnLeave() {
+  const totals = counterTotals(), md = milestoneDates();
+  S.shared.counters.filter((c) => c.author === LEAGUE.cfg().memberId || (totals[c.id] || 0) > 0)
+    .forEach((c) => S.custom.counters.push({ ...c, sphere: c.home || 'adventure', shared: false, custom: true }));
+  S.shared.milestones.filter((m) => m.author === LEAGUE.cfg().memberId || md[m.id])
+    .forEach((m) => S.custom.milestones.push({ ...m, sphere: m.home || 'adventure', shared: false, custom: true }));
+  S.shared = { counters: [], milestones: [] };
+  save();
+  checkAchievements(true);
+}
+
 /* ---------------------- Свои достижения (редакторы) ---------------------- */
 
-const sphereSelect = (cur) => `<select id="own-sphere" class="select">${SPHERES.filter((sp) => sp.id !== 'system')
+const shareToggle = () => (LEAGUE.joined() ? `<div class="row between" style="margin-top:16px">
+    <div><div style="font-weight:600">Поделиться с лигой</div><div class="small muted">Друзья тоже смогут его получить</div></div>
+    <button class="switch on" data-act="toggle-switch" id="own-share" aria-label="Поделиться с лигой"><i></i></button></div>` : '');
+const sphereSelect = (cur) => `<select id="own-sphere" class="select">${SPHERES.filter((sp) => sp.id !== 'system' && sp.id !== 'league')
   .map((sp) => `<option value="${sp.id}" ${sp.id === cur ? 'selected' : ''}>${sp.name}</option>`).join('')}</select>`;
 const tierRow = (goal = '', title = '') => `<div class="tier-row" data-tr>
   <input type="text" inputmode="decimal" class="tg" value="${esc(goal)}" placeholder="Порог">
@@ -1484,6 +1585,7 @@ function customCounterEditor(id) {
     <label class="f">Ступени (до 6)</label>
     <div id="tier-rows">${c.tiers.map((t) => tierRow(t.goal, t.title)).join('')}</div>
     <button class="btn sm" data-act="add-tier-row" style="margin-top:8px">＋ Ступень</button>
+    ${id ? '' : shareToggle()}
     <div class="row" style="margin-top:22px">
       ${id ? `<button class="btn danger" data-act="del-cc" data-id="${id}">Удалить</button>` : ''}
       <button class="btn grow" data-act="close-sheet">Отмена</button>
@@ -1504,6 +1606,7 @@ function customMilestoneEditor(id) {
     ${sphereSelect(m.sphere)}
     <label class="f">Символ</label>
     ${iconPicker(m.icon)}
+    ${id ? '' : shareToggle()}
     <div class="row" style="margin-top:22px">
       ${id ? `<button class="btn danger" data-act="del-cm" data-id="${id}">Удалить</button>` : ''}
       <button class="btn grow" data-act="close-sheet">Отмена</button>
@@ -1525,26 +1628,32 @@ function saveCustomCounter(id) {
     .map((t) => ({ goal: t.goal, title: t.title || `${name}: ${fmtNum(t.goal)} ${unit}` }));
   if (!tiers.length) { toast('Добавь хотя бы одну ступень с порогом'); return; }
   const data = { name, unit, desc: $('#cc-desc').value.trim(), sphere: $('#own-sphere').value, icon: $('#pick-icon').value || 'star', tiers, custom: true };
+  const share = !id && $('#own-share') && $('#own-share').classList.contains('on');
+  const newId = id || uid('cc');
   closeSheet();
   mutate(() => {
     if (id) Object.assign(S.custom.counters.find((c) => c.id === id), data);
-    else S.custom.counters.push({ id: uid('cc'), ...data });
+    else S.custom.counters.push({ id: newId, ...data });
   });
   achSphere = data.sphere;
   render(false);
+  if (share) shareItem(newId, 'counter');
 }
 
 function saveCustomMilestone(id) {
   const name = $('#cm-name').value.trim();
   if (!name) { toast('Введи название'); return; }
   const data = { name, desc: $('#cm-desc').value.trim(), sphere: $('#own-sphere').value, icon: $('#pick-icon').value || 'star', custom: true };
+  const share = !id && $('#own-share') && $('#own-share').classList.contains('on');
+  const newId = id || uid('cm');
   closeSheet();
   mutate(() => {
     if (id) Object.assign(S.custom.milestones.find((m) => m.id === id), data);
-    else S.custom.milestones.push({ id: uid('cm'), ...data });
+    else S.custom.milestones.push({ id: newId, ...data });
   });
   achSphere = data.sphere;
   render(false);
+  if (share) shareItem(newId, 'milestone');
 }
 
 function deleteCustomCounter(id) {
@@ -1677,7 +1786,12 @@ function aiResultHTML(head) {
     return row('c:' + x.id, ico(c.icon), `${esc(c.name)} <b style="color:${sphereById(c.sphere).color}">+${fmtNum(x.amount)} ${c.unit}</b>`, esc(x.reason), sphereById(c.sphere).color); }).join('');
   const ms = r.milestones.map((x) => { const m = milestoneById(x.id);
     return row('m:' + x.id, ico(m.icon), `Веха: ${esc(m.name)}`, esc(x.reason || m.desc), 'var(--am)'); }).join('');
-  const empty = !qs && !bs && !st && !cs && !ms;
+  const nc = (r.newCounters || []).map((x, i) => row('nc:' + i, ico(x.icon), `Новая цепочка: ${esc(x.name)}`,
+    `${esc(sphereById(x.sphere).name)} · ступени ${x.tiers.map((t) => fmtNum(t.goal)).join(' → ')} ${esc(x.unit)}${x.amount ? ` · сегодня +${fmtNum(x.amount)}` : ''}${x.reason ? ' · ' + esc(x.reason) : ''}`, sphereById(x.sphere).color)).join('');
+  const nm = (r.newMilestones || []).map((x, i) => row('nm:' + i, ico(x.icon), `Новая веха: ${esc(x.name)}`,
+    `${esc(x.desc)}${x.done ? ' · открыть сегодня' : ''}`, 'var(--am)')).join('');
+  const shareRow = (nc || nm) && LEAGUE.joined() ? row('share', ico('users'), 'Поделиться новыми с лигой', 'друзья тоже смогут их получить', '#ff9a5a') : '';
+  const empty = !qs && !bs && !st && !cs && !ms && !nc && !nm;
   return `
     <h1>Отчёт разобран</h1>${head}
     ${r.summary ? `<div class="card sweep ai-sum">${ico('sparkle')}<span>${esc(r.summary)}</span></div>` : ''}
@@ -1686,6 +1800,7 @@ function aiResultHTML(head) {
     ${st ? `<h2>Очки параметров</h2>${st}` : ''}
     ${cs ? `<h2>Счётчики достижений</h2>${cs}` : ''}
     ${ms ? `<h2>Вехи</h2>${ms}` : ''}
+    ${nc || nm ? `<h2>Новые достижения</h2><div class="small muted" style="margin:-4px 2px 10px">Этого не было в каталоге — ИИ предлагает создать.</div>${nc}${nm}${shareRow}` : ''}
     ${empty ? '<div class="empty">Ничего не нашлось для начисления — попробуй рассказать подробнее.</div>' : ''}
     <h2>Заметка дня</h2>
     <textarea id="ai-note">${esc(r.note)}</textarea>
@@ -1726,6 +1841,9 @@ async function aiSend() {
     result.stats.forEach((x) => { ai.sel['s:' + x.id] = true; });
     result.counters.forEach((x) => { ai.sel['c:' + x.id] = true; });
     result.milestones.forEach((x) => { ai.sel['m:' + x.id] = true; });
+    (result.newCounters || []).forEach((x, i) => { ai.sel['nc:' + i] = true; });
+    (result.newMilestones || []).forEach((x, i) => { ai.sel['nm:' + i] = true; });
+    ai.sel.share = true;
     ai.phase = 'result';
     SFX.play('confirm');
   } catch (e) {
@@ -1740,6 +1858,7 @@ function aiApply() {
   const r = ai.result;
   const note = ($('#ai-note') || {}).value || '';
   const gained = {};
+  const created = [];
   mutate(() => {
     const day = ensureDay(curDate);
     r.quests.forEach((x) => {
@@ -1764,10 +1883,27 @@ function aiApply() {
     });
     r.counters.forEach((x) => { if (ai.sel['c:' + x.id]) day.c[x.id] = round1((day.c[x.id] || 0) + x.amount); });
     r.milestones.forEach((x) => { if (ai.sel['m:' + x.id] && !day.ms.includes(x.id)) day.ms.push(x.id); });
+    (r.newCounters || []).forEach((x, i) => {
+      if (!ai.sel['nc:' + i]) return;
+      const cid = uid('cc');
+      S.custom.counters.push({ id: cid, name: x.name, unit: x.unit, desc: x.desc, sphere: x.sphere, icon: x.icon, tiers: x.tiers, custom: true, ...(x.sphere === 'shame' ? { shame: true } : {}) });
+      if (x.amount > 0) day.c[cid] = round1((day.c[cid] || 0) + x.amount);
+      created.push([cid, 'counter']);
+    });
+    (r.newMilestones || []).forEach((x, i) => {
+      if (!ai.sel['nm:' + i]) return;
+      const mid = uid('cm');
+      S.custom.milestones.push({ id: mid, name: x.name, desc: x.desc, sphere: x.sphere, icon: x.icon, custom: true });
+      if (x.done) day.ms.push(mid);
+      created.push([mid, 'milestone']);
+    });
     if (note.trim()) day.note = day.note && day.note.trim() ? day.note.trim() + '\n' + note.trim() : note.trim();
   });
+  const shareNew = !!ai.sel.share && LEAGUE.joined();
   closeSheet();
   ai = { phase: 'input', text: '', result: null, sel: {}, error: '' };
+  if (created.length) toast(`Создано новых достижений: ${created.length}`, 'gold', 'sparkle');
+  if (shareNew) (async () => { for (const [cid, kind] of created) await shareItem(cid, kind); })();
   const x = innerWidth / 2, y = innerHeight * 0.32;
   const items = Object.entries(gained).filter(([id, v]) => v && statById(id)).slice(0, 5);
   const net = items.reduce((a, [, v]) => a + v, 0);
@@ -1962,10 +2098,13 @@ ${LEAGUE.invite(c)}`, 'Приглашение скопировано');
       break;
     case 'lg-copy-rec': shareText(LEAGUE.recoveryCode(), 'Код скопирован'); break;
     case 'lg-react':
-      LEAGUE.react(Number(id), el.dataset.k).then(() => render(false)).catch((err) => toast(err.message));
+      LEAGUE.react(Number(id), el.dataset.k).then((bd) => { applySharedItems(bd); render(false); }).catch((err) => toast(err.message));
       break;
     case 'lg-leave':
-      if (confirm('Покинуть лигу? Твоя строка исчезнет из таблицы.')) LEAGUE.leave().then(() => { toast('Ты вышел из лиги'); render(true); }).catch((err) => toast(err.message));
+      if (confirm('Покинуть лигу? Твоя строка исчезнет из таблицы.')) {
+        sharedToCustomOnLeave();
+        LEAGUE.leave().then(() => { toast('Ты вышел из лиги'); render(true); }).catch((err) => toast(err.message));
+      }
       break;
     case 'close-lu': { const lu = el.closest('.lu'); lu.style.transition = 'opacity .3s'; lu.style.opacity = '0'; setTimeout(() => lu.remove(), 300); break; }
     case 'close-sheet': closeSheet(); break;
@@ -2070,6 +2209,9 @@ ${LEAGUE.invite(c)}`, 'Приглашение скопировано');
       break;
     }
     case 'milestone': milestoneSheet(id); break;
+    case 'share-item': shareItem(id, el.dataset.kind); break;
+    case 'unshare-item': if (confirm('Убрать из лиги? У друзей оно останется, только если они уже начали его выполнять.')) unshareItem(id); break;
+    case 'toggle-switch': el.classList.toggle('on'); break;
     case 'add-cc': customCounterEditor(null); break;
     case 'edit-cc': customCounterEditor(id); break;
     case 'save-cc': saveCustomCounter(id); break;

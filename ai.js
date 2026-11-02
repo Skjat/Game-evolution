@@ -79,6 +79,10 @@ How to fill the answer:
 - stats: extra points for meaningful effort that no quest covers. Usually 1–3 points, up to 5 for an exceptional effort. Nothing for passive or trivial things. Harmful behaviour that no debuff covers gets negative points, and a penalty is twice as heavy as the reward for the comparable good action (for example −2 to −10). Give a short reason in Russian.
 - counters: increments of lifetime counters in the counter's unit (km, hours, pieces). Count only what the player states or what clearly follows from it: "пробежал 7 км" → run_km 7; "дочитал книгу" → books 1; "позанимался английским" → lang 1. Bad habits go to "shame" counters ("зависал в тиктоке 3 часа" → doomscroll 3). Skip counters already added by the chosen quests or debuffs. Give a short reason in Russian.
 - milestones: one-time life achievements, only when the player clearly accomplished one today and it is not in the list of already unlocked milestones. Give a short reason in Russian.
+- new_counters / new_milestones: propose a new achievement only when the report mentions a real activity or accomplishment that nothing in the catalogue covers well (a new hobby such as skiing, climbing, chess). At most one new counter and one new milestone per report; never a duplicate or near-duplicate of a catalogue entry. The player confirms before anything is created.
+  - new counter: Russian name, unit, sphere, icon, desc (what exactly counts, one short phrase), 3–5 ascending tiers with playful Russian titles (mocking titles for bad habits in the "shame" sphere), amount = today's progress in that unit, reason.
+  - new milestone: Russian name, desc, sphere, icon, done_today = whether the player accomplished it today, reason.
+  When you propose a new counter for an activity, do not also count that same activity in another counter.
 - summary: 1–2 sentences in Russian addressed to the player as «ты», in an energetic game-master voice; highlight the best of the day. Praise only what was actually done; if the player slipped, call it out with sharp sarcasm.
 - note: a short diary entry in Russian, first person, 1–3 sentences, faithful to the report.
 
@@ -87,6 +91,9 @@ Record only what the player says they did on this day; never invent activities, 
 CATALOGUE
 ${catalogue(S)}`;
   }
+
+  const sphereIds = () => SPHERES.map((x) => x.id).filter((id) => id !== 'system' && id !== 'league');
+  const iconIds = () => (typeof ICON_CHOICES !== 'undefined' ? ICON_CHOICES : ['star']);
 
   function schema(S) {
     const idField = (ids) => (ids.length ? { type: 'string', enum: ids } : { type: 'string' });
@@ -98,6 +105,15 @@ ${catalogue(S)}`;
       stats: { type: 'array', items: obj({ id: idField(S.stats.map((s) => s.id)), points: { type: 'integer' }, reason: { type: 'string' } }) },
       counters: { type: 'array', items: obj({ id: idField(counterList(S).map((c) => c.id)), amount: { type: 'number' }, reason: { type: 'string' } }) },
       milestones: { type: 'array', items: obj({ id: idField(milestoneList(S).map((m) => m.id)), reason: { type: 'string' } }) },
+      new_counters: { type: 'array', items: obj({
+        name: { type: 'string' }, unit: { type: 'string' }, sphere: { type: 'string', enum: sphereIds() }, icon: { type: 'string', enum: iconIds() },
+        desc: { type: 'string' }, tiers: { type: 'array', items: obj({ goal: { type: 'number' }, title: { type: 'string' } }) },
+        amount: { type: 'number' }, reason: { type: 'string' },
+      }) },
+      new_milestones: { type: 'array', items: obj({
+        name: { type: 'string' }, desc: { type: 'string' }, sphere: { type: 'string', enum: sphereIds() }, icon: { type: 'string', enum: iconIds() },
+        done_today: { type: 'boolean' }, reason: { type: 'string' },
+      }) },
       note: { type: 'string' },
     });
   }
@@ -119,7 +135,31 @@ ${catalogue(S)}`;
     const r = raw && typeof raw === 'object' ? raw : {};
     const str = (v, max = 600) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
     const arr = (v) => (Array.isArray(v) ? v : []);
-    const out = { summary: str(r.summary, 400), note: str(r.note, 1000), quests: [], debuffs: [], stats: [], counters: [], milestones: [] };
+    const out = { summary: str(r.summary, 400), note: str(r.note, 1000), quests: [], debuffs: [], stats: [], counters: [], milestones: [], newCounters: [], newMilestones: [] };
+
+    // Предложенные новые достижения: без дублей каталога, с безопасными значениями.
+    const taken = new Set([...counterList(S), ...milestoneList(S)].map((x) => x.name.trim().toLowerCase()));
+    const okSphere = (v) => (sphereIds().includes(v) ? v : 'adventure');
+    const okIcon = (v) => (iconIds().includes(v) ? v : 'star');
+    arr(r.new_counters).slice(0, 2).forEach((x) => {
+      const name = str(x && x.name, 32);
+      if (!name || taken.has(name.toLowerCase())) return;
+      const unit = str(x.unit, 12) || 'раз';
+      const seen = new Set();
+      const tiers = arr(x.tiers).map((t) => ({ goal: Math.round((Number(t && t.goal) || 0) * 10) / 10, title: str(t && t.title, 32) }))
+        .filter((t) => t.goal > 0 && !seen.has(t.goal) && seen.add(t.goal)).sort((a, b) => a.goal - b.goal).slice(0, 6)
+        .map((t) => ({ goal: t.goal, title: t.title || `${name}: ${t.goal} ${unit}` }));
+      if (!tiers.length) return;
+      taken.add(name.toLowerCase());
+      out.newCounters.push({ name, unit, sphere: okSphere(x.sphere), icon: okIcon(x.icon), desc: str(x.desc, 120), tiers,
+        amount: Math.max(0, Math.min(1000, Math.round((Number(x.amount) || 0) * 10) / 10)), reason: str(x.reason, 160) });
+    });
+    arr(r.new_milestones).slice(0, 2).forEach((x) => {
+      const name = str(x && x.name, 32);
+      if (!name || taken.has(name.toLowerCase())) return;
+      taken.add(name.toLowerCase());
+      out.newMilestones.push({ name, desc: str(x.desc, 120), sphere: okSphere(x.sphere), icon: okIcon(x.icon), done: x.done_today === true, reason: str(x.reason, 160) });
+    });
 
     const bMap = {};
     arr(r.debuffs).forEach((x) => {

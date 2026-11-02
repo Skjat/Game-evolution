@@ -24,6 +24,7 @@ const randToken = () => btoa(String.fromCharCode(...crypto.getRandomValues(new U
 const clip = (s, n) => String(s ?? '').trim().slice(0, n);
 const now = () => Date.now();
 const MAX_MEMBERS = 50;
+const MAX_ITEMS = 150;
 const REACTIONS = ['respect', 'lol'];
 
 async function sha256(s) {
@@ -87,7 +88,10 @@ async function board(env, me) {
     rows.forEach((r) => { (byEvent[r.event_id] = byEvent[r.event_id] || {})[r.kind] = { n: r.n, mine: !!r.mine }; });
     feed.forEach((e) => { e.reactions = byEvent[e.id] || {}; });
   }
-  return { league, me: me.id, members, feed, serverTime: now() };
+  const items = (await env.DB.prepare(
+    'SELECT i.id, i.author, i.kind, i.data, i.created_at, m.name AS authorName FROM items i LEFT JOIN members m ON m.id = i.author WHERE i.league = ? ORDER BY i.created_at',
+  ).bind(me.league).all()).results.map((i) => ({ ...i, data: JSON.parse(i.data || '{}') }));
+  return { league, me: me.id, members, feed, items, serverTime: now() };
 }
 
 async function route(req, env) {
@@ -153,6 +157,41 @@ async function route(req, env) {
     const had = await env.DB.prepare('SELECT 1 FROM reactions WHERE event_id = ? AND member = ? AND kind = ?').bind(ev.id, me.id, kind).first();
     if (had) await env.DB.prepare('DELETE FROM reactions WHERE event_id = ? AND member = ? AND kind = ?').bind(ev.id, me.id, kind).run();
     else await env.DB.prepare('INSERT INTO reactions (event_id, member, kind, created_at) VALUES (?, ?, ?, ?)').bind(ev.id, me.id, kind, now()).run();
+    return json(await board(env, me));
+  }
+
+  // Поделиться своим достижением с лигой (или обновить своё)
+  if (path === '/api/items' && method === 'POST') {
+    const body = await readBody(req);
+    const id = clip(body.id, 40);
+    const kind = body.kind === 'counter' || body.kind === 'milestone' ? body.kind : null;
+    if (!/^[\w-]{4,40}$/.test(id) || !kind) return fail('Неверное достижение');
+    const d = body.data && typeof body.data === 'object' ? body.data : {};
+    const data = {
+      name: clip(d.name, 40), desc: clip(d.desc, 160), icon: clip(d.icon, 24), sphere: clip(d.sphere, 20),
+      ...(kind === 'counter' ? {
+        unit: clip(d.unit, 16) || 'раз',
+        tiers: (Array.isArray(d.tiers) ? d.tiers : []).slice(0, 6)
+          .map((t) => ({ goal: Number(t && t.goal) || 0, title: clip(t && t.title, 40) })).filter((t) => t.goal > 0),
+      } : {}),
+    };
+    if (!data.name || (kind === 'counter' && !data.tiers.length)) return fail('У достижения нет названия или ступеней');
+    const existing = await env.DB.prepare('SELECT author FROM items WHERE league = ? AND id = ?').bind(me.league, id).first();
+    if (existing && existing.author !== me.id) return fail('Это достижение добавил другой участник', 409);
+    if (!existing) {
+      const cnt = await env.DB.prepare('SELECT COUNT(*) AS n FROM items WHERE league = ?').bind(me.league).first();
+      if (cnt.n >= MAX_ITEMS) return fail('В лиге уже слишком много общих достижений', 409);
+    }
+    await env.DB.prepare('INSERT OR REPLACE INTO items (id, league, author, kind, data, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(id, me.league, me.id, kind, JSON.stringify(data), now()).run();
+    if (!existing) await addEvents(env, me.league, me.id, [{ kind: 'item', text: `добавил в лигу ${kind === 'counter' ? 'цепочку' : 'веху'} «${data.name}»`, icon: data.icon || 'star' }]);
+    return json(await board(env, me));
+  }
+
+  // Убрать своё достижение из лиги
+  if (path === '/api/items/remove' && method === 'POST') {
+    const body = await readBody(req);
+    await env.DB.prepare('DELETE FROM items WHERE league = ? AND id = ? AND author = ?').bind(me.league, clip(body.id, 40), me.id).run();
     return json(await board(env, me));
   }
 

@@ -92,6 +92,18 @@ const LEAGUE = (() => {
     return board;
   }
 
+  // Общие достижения лиги
+  async function share(id, kind, data) {
+    const board = await api('/api/items', { method: 'POST', body: { id, kind, data } });
+    set({ board });
+    return board;
+  }
+  async function unshare(id) {
+    const board = await api('/api/items/remove', { method: 'POST', body: { id } });
+    set({ board });
+    return board;
+  }
+
   async function leave() {
     try { await api('/api/leave', { method: 'POST' }); }
     catch (e) { if (e.status && e.status !== 401) throw e; }
@@ -121,5 +133,5 @@ const LEAGUE = (() => {
     return set({ server: d.s, code: d.c, name: d.n, memberId: d.i, token: d.t, board: null, outbox: [], error: '', lastSync: 0 });
   }
 
-  return { cfg, set, joined, normServer, host, parseInvite, invite, create, join, sync, refresh, react, leave, push, recoveryCode, restore };
+  return { cfg, set, joined, normServer, host, parseInvite, invite, create, join, sync, refresh, react, share, unshare, leave, push, recoveryCode, restore };
 })();

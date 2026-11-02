@@ -21,6 +21,7 @@ const SPHERES = [
   { id: 'home',      name: 'Дом',         icon: 'home',      color: '#ffcfa3' },
   { id: 'spirit',    name: 'Дух',         icon: 'candle',    color: '#ff8a5a' },
   { id: 'kindness',  name: 'Добро',       icon: 'sun',       color: '#5dffb0' },
+  { id: 'league',    name: 'Лига',        icon: 'users',     color: '#ff9a5a' },   // общие достижения друзей
 ];
 
 // Редкость ступени: по порядковому номеру ступени в цепочке.
@@ -189,8 +190,9 @@ const QUEST_COUNTERS = {
 };
 
 // Встроенные + свои достижения игрока (S.custom).
-function counterList(S) { return COUNTERS.concat((S && S.custom && S.custom.counters) || []); }
-function milestoneList(S) { return MILESTONES.concat((S && S.custom && S.custom.milestones) || []); }
+// Встроенные + свои + общие достижения лиги (S.shared).
+function counterList(S) { return COUNTERS.concat((S && S.custom && S.custom.counters) || [], (S && S.shared && S.shared.counters) || []); }
+function milestoneList(S) { return MILESTONES.concat((S && S.custom && S.custom.milestones) || [], (S && S.shared && S.shared.milestones) || []); }
 
 /* =====================================================================
    ПОЗОР: антидостижения за вредные привычки.
