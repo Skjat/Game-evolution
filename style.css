@@ -130,6 +130,8 @@ body {
 }
 input, textarea { -webkit-user-select: text; user-select: text; }
 button { font: inherit; color: inherit; touch-action: manipulation; cursor: pointer; }
+svg.i .px, svg .px { shape-rendering: crispEdges; }
+[data-theme="terminal"] svg.i { stroke-linecap: square; stroke-linejoin: miter; }
 svg.i { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .emo { font-size: .95em; line-height: 1; }
 

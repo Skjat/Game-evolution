@@ -82,18 +82,72 @@ const ICONS = {
   couch: '<path d="M4 11V8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3 M2 13a2 2 0 0 1 4 0v2h12v-2a2 2 0 0 1 4 0v5H2z M4 18v2M20 18v2"/>',
   cart: '<path d="M3 4h2l3 11h10l3-8H6.5"/><circle cx="9" cy="20" r="1.3"/><circle cx="17" cy="20" r="1.3"/>',
   arrowDown: '<path d="M12 4v16M5 13l7 7 7-7"/>',
+  // ---- Минимал ----
+  kettlebell: '<path d="M8.5 9.5V8a3.5 3.5 0 0 1 7 0v1.5"/><path d="M6 15a6 6 0 0 1 12 0c0 2.2-.8 4-2 5H8c-1.2-1-2-2.8-2-5z"/>',
+  runner: '<circle cx="15" cy="4.5" r="1.8"/><path d="M8 10.5L13 8l3 3.5 3 .5M13 8l-2 6 3 3-1 4.5M11 14l-3 3H4.5"/>',
+  heartPulse: '<path d="M12 20.5s-8.5-5-8.5-11A4.5 4.5 0 0 1 12 6.8a4.5 4.5 0 0 1 8.5 2.7c0 6-8.5 11-8.5 11z"/><path d="M3.5 12.5h4l1.5-2.5 2.5 5 1.5-2.5h7.5"/>',
+  bulb: '<path d="M9 18h6M10 21.5h4M12 2.5a6.5 6.5 0 0 0-3.8 11.8c.5.4.8 1 .8 1.7v.5h6V16c0-.7.3-1.3.8-1.7A6.5 6.5 0 0 0 12 2.5z"/>',
+  owl: '<path d="M6 3.5l2.5 2.5h7L18 3.5V13a6 6 0 0 1-12 0z"/><circle cx="9.5" cy="10" r="2"/><circle cx="14.5" cy="10" r="2"/><path d="M11.2 13.2l.8 1 .8-1M9 21l1-2M15 21l-1-2"/>',
+  smile: '<circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0M9 9.5h.01M15 9.5h.01"/>',
+  checklist: '<rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M7.5 9l1.5 1.5L11.5 8M7.5 15l1.5 1.5 2.5-2.5M14 9.5h3M14 15.5h3"/>',
+  bars: '<path d="M4 20.5h16M7 16.5v-4M12 16.5V7M17 16.5V10"/>',
+  sliders: '<path d="M4 6h10M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
+  play: '<circle cx="12" cy="12" r="9"/><path d="M10 8.5l5 3.5-5 3.5z"/>',
+  refresh: '<path d="M20 11A8 8 0 0 0 5.3 6.7L4 8M4 4v4h4M4 13a8 8 0 0 0 14.7 4.3L20 16M20 20v-4h-4"/>',
+  // ---- Дзен ----
+  peak: '<path d="M2 20L9.5 7l4 6 2.5-3.5L22 20z M7.3 10.8l2.2 1.4 1.6-1.2"/>',
+  wave: '<path d="M2 8.5c2.5-3 5-3 7.5 0s5 3 7.5 0c1.6-1.8 3.4-2 5-1M2 15.5c2.5-3 5-3 7.5 0s5 3 7.5 0c1.6-1.8 3.4-2 5-1"/>',
+  bamboo: '<path d="M10 2v20M8.5 8h3M8.5 15h3"/><path d="M10 8c2-2 5-3 8-2.5-1.5 2.5-4.5 3.5-8 2.5zM10 15c-1.5-2-4-3-6.5-2.5 1.2 2.2 3.5 3 6.5 2.5z"/>',
+  lantern: '<path d="M12 1.5v2M9 3.5h6M8.5 3.5C5.8 5.5 5.8 16 8.5 18h7c2.7-2 2.7-12.5 0-14.5zM6.6 8.5h10.8M6.6 13h10.8M9.5 18v2.5h5V18"/>',
+  enso: '<path d="M17.8 17.6A8 8 0 1 1 20 11"/><path d="M20 11c.3 1.2.1 2.4-.6 3.3"/>',
+  bloom: [0, 72, 144, 216, 288].map((r) => `<path transform="rotate(${r} 12 12)" d="M12 12c-2.2-2-2.8-5-1.2-7.8.4.6.8.9 1.2.9s.8-.3 1.2-.9c1.6 2.8 1 5.8-1.2 7.8z"/>`).join('') + '<circle cx="12" cy="12" r=".8"/>',
+  cairn: '<ellipse cx="12" cy="19" rx="7.5" ry="2.6"/><ellipse cx="12" cy="13.3" rx="5.2" ry="2.4"/><ellipse cx="12" cy="8.2" rx="3.4" ry="2"/><ellipse cx="12" cy="4.3" rx="1.9" ry="1.3"/>',
+  quill: '<path d="M20.5 3C12.5 4 7.5 9 5.5 17l-1.5 4 4-1.5c8-2 12-7 13-15.5zM5.5 17c3-1.5 6-4.5 8-8.5"/>',
+  // ---- Чёрный гримуар ----
+  greatsword: '<path d="M9 2h6v12.5l-3 3.5-3-3.5z M12 5v9M4.5 15h15M12 18v4"/>',
+  tornado: '<path d="M3 4.5h18M5 8.5h13M7.5 12.5h9M9.5 16.5h5M11 20.5h2"/>',
+  ward: '<path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"/><path d="M12 7l2.8 4.5L12 16l-2.8-4.5z"/>',
+  tome: '<path d="M5 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5z M8 3v18"/><path d="M13.5 7.5l1 2.5 2.5 1-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1z"/>',
+  sigil: '<circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="6.5"/><path d="M12 5.5l5.6 9.75H6.4z M12 2.5v3M3.8 16.7l2.6-1.45M20.2 16.7l-2.6-1.45"/>',
+  bull: '<path d="M3 4.5c0 4 2.5 6.5 6 6.5M21 4.5c0 4-2.5 6.5-6 6.5"/><path d="M7.5 9.5h9l-1 7.5-3.5 3.5-3.5-3.5z"/><path d="M10 13.5h.01M14 13.5h.01M10.5 18h3"/>',
+  wand: '<path d="M3.5 20.5L15 9M13.3 7.3l3.4 3.4"/><path d="M18 2l.9 2.1 2.1.9-2.1.9L18 8l-.9-2.1L15 5l2.1-.9zM8 3l.5 1.5L10 5l-1.5.5L8 7l-.5-1.5L6 5l1.5-.5z"/>',
+  banner: '<path d="M5 21.5V2.5M5 3.5h14l-3.5 4.5 3.5 4.5H5"/>',
   clover: [0, 72, 144, 216, 288].map((r) => `<path transform="rotate(${r} 12 11)" d="M12 11c-1.7-1.4-3.4-3.3-2.2-4.8.8-1 2.2-.6 2.2.5 0-1.1 1.4-1.5 2.2-.5 1.2 1.5-.5 3.4-2.2 4.8z"/>`).join('') + '<path d="M12 11c.6 3.5 1.8 6.5 4 10"/>',
   snowflake: '<path d="M12 2v20M3.3 7l17.4 10M3.3 17L20.7 7M9.5 3.5L12 6l2.5-2.5M9.5 20.5L12 18l2.5 2.5"/>',
   planet: '<circle cx="12" cy="12" r="5.5"/><ellipse cx="12" cy="12" rx="10.5" ry="3.5" transform="rotate(-20 12 12)"/>',
   terminal: '<rect x="2.5" y="4" width="19" height="16" rx="2"/><path d="M6.5 9l3 3-3 3M12 15h5"/>',
   sprout: '<path d="M12 21v-8M12 13c0-4-3-6-7-6 0 4 3 6 7 6zM12 11c0-3 2.5-5 6-5 0 3-2.5 5-6 5z"/>',
 };
+// Пиксельные иконки темы «Терминал»: сетка 12×12, клетка 2×2.
+const PIXEL_ICONS = {
+  px_str: ['............', '............', '.##......##.', '.##......##.', '###......###', '############', '############', '###......###', '.##......##.', '.##......##.', '............', '............'],
+  px_agi: ['......###...', '.....###....', '....###.....', '...###......', '..########..', '.......###..', '......###...', '.....###....', '....###.....', '...##.......', '..#.........', '............'],
+  px_end: ['............', '............', '##########..', '#........#..', '#.##.##..###', '#.##.##..###', '#.##.##..###', '#.##.##..###', '#........#..', '##########..', '............', '............'],
+  px_int: ['....#..#....', '....#..#....', '..########..', '###......###', '..#.####.#..', '..#.#..#.#..', '..#.#..#.#..', '..#.####.#..', '###......###', '..########..', '....#..#....', '....#..#....'],
+  px_wis: ['............', '............', '....####....', '..##....##..', '.#...##...#.', '#...####...#', '#...####...#', '.#...##...#.', '..##....##..', '....####....', '............', '............'],
+  px_cha: ['..........##', '..........##', '..........##', '.......##.##', '.......##.##', '.......##.##', '....##.##.##', '....##.##.##', '....##.##.##', '.##.##.##.##', '.##.##.##.##', '.##.##.##.##'],
+  px_hero: ['....####....', '...######...', '...######...', '...######...', '....####....', '............', '..########..', '.##########.', '.##########.', '.##########.', '.##########.', '............'],
+  px_day: ['............', '.#..........', '.##.........', '..##........', '...##.......', '....##......', '...##.......', '..##........', '.##.........', '.#....######', '......######', '............'],
+  px_hist: ['............', '.........##.', '.........##.', '.....##..##.', '.....##..##.', '.....##..##.', '.##..##..##.', '.##..##..##.', '.##..##..##.', '.##..##..##.', '############', '............'],
+  px_ach: ['.##########.', '#.########.#', '#.########.#', '#.########.#', '.#.######.#.', '...######...', '....####....', '.....##.....', '.....##.....', '....####....', '...######...', '............'],
+  px_league: ['............', '..##....##..', '.####..####.', '.####..####.', '..##....##..', '............', '.####..####.', '#####..#####', '#####..#####', '#####..#####', '............', '............'],
+  px_gear: ['.....##.....', '.##..##..##.', '.##########.', '..##....##..', '..#......#..', '####....####', '####....####', '..#......#..', '..##....##..', '.##########.', '.##..##..##.', '.....##.....'],
+  px_act: ['............', '...#........', '...###......', '...#####....', '...#######..', '...########.', '...########.', '...#######..', '...#####....', '...###......', '...#........', '............'],
+  px_magic: ['.....##.....', '.....##.....', '.....##.....', '....####....', '...######...', '############', '############', '...######...', '....####....', '.....##.....', '.....##.....', '.....##.....'],
+};
+for (const [k, rows] of Object.entries(PIXEL_ICONS)) {
+  let d = '';
+  rows.forEach((row, y) => row.replace(/#+/g, (m, x) => { d += `M${x * 2} ${y * 2}h${m.length * 2}v2h-${m.length * 2}z`; return m; }));
+  ICONS[k] = `<path class="px" fill="currentColor" stroke="none" d="${d}"/>`;
+}
 const ICON_CHOICES = ['sword', 'swift', 'shield', 'hex', 'eye', 'crown', 'flame', 'bolt', 'star', 'gem', 'atom', 'moon', 'sun',
   'dumbbell', 'wind', 'lotus', 'ball', 'book', 'cap', 'candle', 'link', 'mic', 'leaf', 'heart', 'brush', 'note', 'coin',
   'target', 'rocket', 'compass', 'globe', 'pen', 'home', 'skull', 'claw', 'seed', 'mountain', 'bike', 'swim', 'drop',
   'chat', 'users', 'hourglass', 'briefcase', 'wallet', 'pot', 'phoneOff', 'tree', 'gift', 'camera', 'plane', 'sparkle',
-  'burger', 'candy', 'bottle', 'cigarette', 'couch', 'cart', 'clover', 'snowflake', 'planet', 'terminal', 'sprout'];
-const AVATAR_CHOICES = ['reactor', 'flame', 'skull', 'eye', 'crown', 'sword', 'star', 'moon', 'claw', 'atom', 'gem', 'bolt', 'clover', 'terminal', 'sprout', 'planet', 'snowflake', 'heart'];
+  'burger', 'candy', 'bottle', 'cigarette', 'couch', 'cart', 'clover', 'snowflake', 'planet', 'terminal', 'sprout',
+  'kettlebell', 'runner', 'heartPulse', 'bulb', 'owl', 'smile', 'peak', 'wave', 'bamboo', 'lantern', 'enso', 'bloom', 'cairn',
+  'greatsword', 'tornado', 'ward', 'tome', 'sigil', 'bull', 'banner', 'wand', 'px_str', 'px_agi', 'px_end', 'px_int', 'px_wis', 'px_cha'];
+const AVATAR_CHOICES = ['reactor', 'flame', 'skull', 'eye', 'crown', 'sword', 'star', 'moon', 'claw', 'atom', 'gem', 'bolt', 'clover', 'terminal', 'sprout', 'planet', 'snowflake', 'heart', 'owl', 'cairn', 'bull', 'px_hero'];
 
 const ico = (k, cls = '') => ICONS[k]
   ? `<svg class="i ${cls}" viewBox="0 0 24 24">${ICONS[k]}</svg>`
@@ -137,28 +191,34 @@ const TITLES = [
 // fx: neon — игровые свечения; calm — спокойно, без эффектов; crt — терминал; magic — гримуар.
 const THEMES = [
   { id: 'reactor', name: 'Алый реактор', desc: 'Игровая: неон, лазеры, ядро реактора', fx: 'neon', meta: '#050203', particles: 0, avatar: 'reactor',
+    icons: { stats: { str: 'sword', agi: 'swift', end: 'shield', int: 'hex', wis: 'eye', cha: 'crown' }, tabs: { hero: 'shieldStar', day: 'doc', history: 'chart', ach: 'trophy', league: 'users', settings: 'gear' }, act: 'bolt', magic: 'sparkle', refresh: 'refresh' },
     sw: ['#ff1f3d', '#ff7a1a', '#ffb020', '#050203'],
     stats: { str: '#ff2340', agi: '#ffc23d', end: '#ff7a1a', int: '#ff5c8a', wis: '#ffcfa3', cha: '#ff3dbb' },
     text: { sub: 'reactor core · online', cta: 'Зарядить ядро', done: 'Ядро заряжено', up: 'ПЕРЕГРУЗКА ЯДРА', stat: 'ПРОКАЧКА', down: 'ДЕГРАДАЦИЯ', ai: 'Ядро анализирует день', ok: 'Принять силу' } },
   { id: 'light', name: 'Минимал', desc: 'Светлая и чистая: белые карточки, без эффектов', fx: 'calm', meta: '#f4f5f7', particles: 0, avatar: 'star',
+    icons: { stats: { str: 'kettlebell', agi: 'runner', end: 'heartPulse', int: 'bulb', wis: 'owl', cha: 'smile' }, tabs: { hero: 'home', day: 'checklist', history: 'bars', ach: 'medal', league: 'users', settings: 'sliders' }, act: 'play', magic: 'sparkle', refresh: 'refresh' },
     sw: ['#4f5bd5', '#6b77ee', '#ffffff', '#f4f5f7'],
     stats: { str: '#e5484d', agi: '#f2a20d', end: '#f76b15', int: '#4f5bd5', wis: '#12a594', cha: '#d6409f' },
     text: { sub: 'мой прогресс', cta: 'Подвести итоги дня', done: 'Итоги подведены', up: 'Новый уровень', stat: 'Параметр вырос', down: 'Уровень снижен', ai: 'Анализирую день', ok: 'Отлично' } },
   { id: 'terminal', name: 'Терминал', desc: 'Техно: зелёный фосфор, моноширинный шрифт', fx: 'crt', meta: '#000000', particles: 0, avatar: 'terminal',
+    icons: { stats: { str: 'px_str', agi: 'px_agi', end: 'px_end', int: 'px_int', wis: 'px_wis', cha: 'px_cha' }, tabs: { hero: 'px_hero', day: 'px_day', history: 'px_hist', ach: 'px_ach', league: 'px_league', settings: 'px_gear' }, act: 'px_act', magic: 'px_magic', refresh: 'px_act' },
     sw: ['#39ff88', '#00d65c', '#ffd400', '#000000'],
     stats: { str: '#ff5f5f', agi: '#ffd400', end: '#ff9f1c', int: '#39ff88', wis: '#5ec8ff', cha: '#e07bff' },
     text: { sub: '> system ready', cta: '> run daily_report', done: '> report.ok', up: 'LEVEL_UP', stat: 'STAT_UP', down: 'SYSTEM_DEGRADED', ai: '> parsing day.log', ok: '> ok' } },
   { id: 'zen', name: 'Дзен', desc: 'Тёмная и тихая: шалфей, песок, мягкое дыхание', fx: 'calm', meta: '#14171a', particles: 12, avatar: 'sprout',
+    icons: { stats: { str: 'peak', agi: 'wave', end: 'bamboo', int: 'lantern', wis: 'enso', cha: 'bloom' }, tabs: { hero: 'cairn', day: 'quill', history: 'hourglass', ach: 'lotus', league: 'users', settings: 'sliders' }, act: 'sprout', magic: 'bloom', refresh: 'refresh' },
     sw: ['#8fb39a', '#d8b98a', '#e8e4dc', '#14171a'],
     stats: { str: '#c9846a', agi: '#d8b98a', end: '#b8a27a', int: '#8fa9c4', wis: '#8fb39a', cha: '#c49ab8' },
     text: { sub: 'шаг за шагом', cta: 'Записать день', done: 'День записан', up: 'Новая ступень', stat: 'Рост', down: 'Шаг назад', ai: 'Размышляю над днём', ok: 'Спасибо' } },
   { id: 'grimoire', name: 'Чёрный гримуар', desc: 'Аниме в духе «Чёрного клевера»: тьма, изумруд, золото', fx: 'magic', meta: '#030503', particles: 26, avatar: 'clover',
+    icons: { stats: { str: 'greatsword', agi: 'tornado', end: 'ward', int: 'tome', wis: 'sigil', cha: 'bull' }, tabs: { hero: 'clover', day: 'scroll', history: 'hourglass', ach: 'crown', league: 'banner', settings: 'wand' }, act: 'bolt', magic: 'sparkle', refresh: 'refresh' },
     sw: ['#13b865', '#4dff9a', '#e8c35a', '#030503'],
     stats: { str: '#e8c35a', agi: '#4dff9a', end: '#2ec4a0', int: '#6fb6ff', wis: '#d8f5d0', cha: '#c58bff' },
     text: { sub: 'гримуар пробуждён', cta: 'Наполнить гримуар', done: 'Гримуар наполнен', up: 'ГРИМУАР ПРОБУЖДЁН', stat: 'НОВОЕ ЗАКЛИНАНИЕ', down: 'АНТИМАГИЯ', ai: 'Гримуар читает день', ok: 'Превзойти себя' } },
 ];
 const themeOf = (id) => THEMES.find((t) => t.id === id) || THEMES[0];
 const TT = () => themeOf((S && S.settings && S.settings.theme) || 'reactor').text;
+const TI = () => themeOf((S && S.settings && S.settings.theme) || 'reactor').icons;
 
 /* ---------------------- Утилиты ---------------------- */
 
@@ -743,7 +803,7 @@ function radarSVG(xp) {
   S.stats.forEach((s, i) => {
     const [x, y] = pt(i, R + 26);
     const icon = ICONS[s.icon]
-      ? `<svg x="${f(x - 10)}" y="${f(y - 17)}" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${s.color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" filter="url(#iglow)">${ICONS[s.icon]}</svg>`
+      ? `<svg x="${f(x - 10)}" y="${f(y - 17)}" width="20" height="20" viewBox="0 0 24 24" color="${s.color}" fill="none" stroke="${s.color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" filter="url(#iglow)">${ICONS[s.icon]}</svg>`
       : `<text x="${f(x)}" y="${f(y - 2)}" text-anchor="middle" font-size="17">${esc(s.icon)}</text>`;
     g += icon + `<text x="${f(x)}" y="${f(y + 16)}" text-anchor="middle" font-size="12" font-weight="700" style="fill:var(--text);font-family:var(--head)">${levels[i]}</text>`;
   });
@@ -798,11 +858,11 @@ function viewHero() {
       </div>
     </div>
     ${todayDone
-      ? `<button class="cta done" data-act="go-today">${ico('bolt')} ${esc(TT().done)} · ${sign(dayTotal(tday))} XP</button>`
-      : `<button class="cta" data-act="go-today">${ico('doc')} ${esc(TT().cta)}</button>`}
+      ? `<button class="cta done" data-act="go-today">${ico(TI().act)} ${esc(TT().done)} · ${sign(dayTotal(tday))} XP</button>`
+      : `<button class="cta" data-act="go-today">${ico(TI().tabs.day)} ${esc(TT().cta)}</button>`}
     ${S.stats.length >= 3 ? `<div class="card" style="padding:8px 6px 4px">${radarSVG(xp)}</div>` : ''}
     <h2>Параметры</h2>
-    ${stats || `<div class="empty">${ico('hex')}<div>Добавь параметры в разделе «Ещё»</div></div>`}
+    ${stats || `<div class="empty">${ico(TI().stats.int)}<div>Добавь параметры в разделе «Ещё»</div></div>`}
   `;
 }
 
@@ -1041,7 +1101,7 @@ function viewAch() {
     } else body = achSphere === 'shame' ? `
       <div class="card shame-intro">${ico('skull')}<div><b>Коллекция позора: ${shameGot}</b><div class="small muted">Клейма даются за слабости. Искупление: ${REDEEM_DAYS} дней без слабости (в дни, когда отмечаешь итоги) снимают одну ступень. Срыв обнуляет отсчёт.</div></div></div>
       <h2 class="bad-h">Клейма</h2>${chains}
-      <button class="btn block add-own" data-act="add-cc">${ico('sparkle')} Своя цепочка позора</button>
+      <button class="btn block add-own" data-act="add-cc">${ico(TI().magic)} Своя цепочка позора</button>
       <h2 class="bad-h">Антисерии</h2>
       <div class="achs">${bySphere('shame').filter((a) => a.shameKind === 'anti').map((a) => `<div class="card ach shame ${a.ok ? 'got' : 'locked'}">
           <div class="badge">${ico(a.icon)}</div>
@@ -1057,10 +1117,10 @@ function viewAch() {
           <div class="ad">${esc(m.desc || '')}</div>
           <div class="ap">${md[m.id] ? '✕ ' + shortDate(md[m.id]) : 'не было'}</div>
         </button>`).join('')}</div>
-      <button class="btn block add-own" data-act="add-cm" style="margin-top:12px">${ico('sparkle')} Своя позорная веха</button>` : `<h2>Цепочки</h2>${chains}
-      <button class="btn block add-own" data-act="add-cc">${ico('sparkle')} Своя цепочка</button>
+      <button class="btn block add-own" data-act="add-cm" style="margin-top:12px">${ico(TI().magic)} Своя позорная веха</button>` : `<h2>Цепочки</h2>${chains}
+      <button class="btn block add-own" data-act="add-cc">${ico(TI().magic)} Своя цепочка</button>
       <h2>Вехи</h2><div class="achs">${miles}</div>
-      <button class="btn block add-own" data-act="add-cm" style="margin-top:12px">${ico('sparkle')} Своя веха</button>`;
+      <button class="btn block add-own" data-act="add-cm" style="margin-top:12px">${ico(TI().magic)} Своя веха</button>`;
   }
 
   return `
@@ -1338,7 +1398,7 @@ function viewLeague() {
       <div class="row between">
         <div class="grow"><div class="lgname">${esc(c.name || 'Лига')}</div>
           <div class="sx">${b ? `${b.members.length} ${plural(b.members.length, 'участник', 'участника', 'участников')} · ` : ''}${c.lastSync ? 'обновлено ' + timeAgo(c.lastSync) : 'ещё не синхронизировано'}</div></div>
-        <button class="icon-btn" data-act="lg-refresh" aria-label="Обновить">${ico('bolt')}</button>
+        <button class="icon-btn" data-act="lg-refresh" aria-label="Обновить">${ico(TI().refresh)}</button>
       </div>
       ${c.error ? `<div class="small err" style="margin-top:8px">${esc(c.error)}</div>` : ''}
       <div class="row" style="margin-top:12px">
@@ -1548,12 +1608,12 @@ function redeemHTML(c) {
   const st = shameInfo(c.id);
   if (st.value <= 0) {
     const had = (computeCounters().raw[c.id] || 0) > 0;
-    return `<div class="redeem ok">${ico('sparkle')}<span>${had ? 'Клеймо снято. Так держать!' : 'Чисто. Не начинай.'}</span></div>`;
+    return `<div class="redeem ok">${ico(TI().magic)}<span>${had ? 'Клеймо снято. Так держать!' : 'Чисто. Не начинай.'}</span></div>`;
   }
   const cur = [...c.tiers].reverse().find((t) => st.value >= t.goal);
   const left = REDEEM_DAYS - st.clean;
   return `<div class="redeem">
-    <div class="row between"><span>${ico('sparkle')} Искупление${cur ? ` «${esc(cur.title)}»` : ''}</span><b>${st.clean}/${REDEEM_DAYS} дн.</b></div>
+    <div class="row between"><span>${ico(TI().magic)} Искупление${cur ? ` «${esc(cur.title)}»` : ''}</span><b>${st.clean}/${REDEEM_DAYS} дн.</b></div>
     ${barHTML('rd-' + c.id, st.clean / REDEEM_DAYS, '#5dffb0')}
     <div class="sx">${left === 1 ? 'Ещё 1 чистый день' : `Ещё ${left} чистых ${plural(left, 'день', 'дня', 'дней')}`} — и ступень снимется</div>
   </div>`;
@@ -1800,7 +1860,7 @@ function aiSettingsHTML() {
       <div class="small muted" style="margin-top:10px">Нужен OpenAI-совместимый API (/v1/chat/completions) по HTTPS с разрешённым CORS: Ollama, vLLM, llama.cpp, LM Studio и т.п.</div>
     `}
     <div class="row" style="margin-top:12px">
-      <button class="btn grow" data-act="ai-test">${ico('bolt')} Проверить связь</button>
+      <button class="btn grow" data-act="ai-test">${ico(TI().act)} Проверить связь</button>
     </div>
     <div class="small" id="ai-status" style="margin-top:8px"></div>
   </div>`;
@@ -1837,7 +1897,7 @@ function aiRender() {
       </div>
       <div class="row" style="margin-top:16px">
         <button class="btn grow" data-act="close-sheet">Отмена</button>
-        <button class="btn primary grow" data-act="ai-send">${ico('bolt')} Разобрать день</button>
+        <button class="btn primary grow" data-act="ai-send">${ico(TI().act)} Разобрать день</button>
       </div>`);
   } else if (ai.phase === 'loading') {
     openSheet(`
@@ -1886,7 +1946,7 @@ function aiResultHTML(head) {
   const empty = !qs && !bs && !st && !cs && !ms && !nc && !nm;
   return `
     <h1>Отчёт разобран</h1>${head}
-    ${r.summary ? `<div class="card sweep ai-sum">${ico('sparkle')}<span>${esc(r.summary)}</span></div>` : ''}
+    ${r.summary ? `<div class="card sweep ai-sum">${ico(TI().magic)}<span>${esc(r.summary)}</span></div>` : ''}
     ${qs ? `<h2>Подвиги</h2>${qs}` : ''}
     ${bs ? `<h2 class="bad-h">Слабости</h2>${bs}` : ''}
     ${st ? `<h2>Очки параметров</h2>${st}` : ''}
@@ -1898,7 +1958,7 @@ function aiResultHTML(head) {
     <textarea id="ai-note">${esc(r.note)}</textarea>
     <div class="row" style="margin-top:16px">
       <button class="btn grow" data-act="ai-back">Изменить</button>
-      <button class="btn primary grow" data-act="ai-apply">${ico('bolt')} Применить</button>
+      <button class="btn primary grow" data-act="ai-apply">${ico(TI().act)} Применить</button>
     </div>`;
 }
 
@@ -2433,6 +2493,16 @@ function applyTheme(id, opts = {}) {
     }
     box.innerHTML = html;
   }
+  const tb = $('#tabbar');
+  if (tb) {
+    const active = (tb.querySelector('button.active') || {}).dataset;
+    tb.innerHTML = TABS.map(([k, label]) => `<button data-tab="${k}" class="${active && active.tab === k ? 'active' : ''}">${ico(t.icons.tabs[k])}<span>${label}</span></button>`).join('');
+  }
+  // Символы параметров, которые не меняли вручную, — из набора темы (один раз для старых данных и при каждой смене темы).
+  if ((opts.switching && prev.id !== t.id) || !S.settings.themeIcons) {
+    for (const st of S.stats) if (t.icons.stats[st.id] && THEMES.some((x) => x.icons.stats[st.id] === st.icon)) st.icon = t.icons.stats[st.id];
+    if (!S.settings.themeIcons) { S.settings.themeIcons = true; save(); }
+  }
   if (opts.switching && prev.id !== t.id) {
     // Параметры и символ, которые не меняли вручную, перекрашиваем в палитру новой темы.
     const anyDefault = (sid, color) => THEMES.some((x) => x.stats[sid] === color) || (DEFAULT_STATS.find((d) => d.id === sid) || {}).color === color;
@@ -2446,7 +2516,6 @@ function applyTheme(id, opts = {}) {
 
 /* ---------------------- Старт ---------------------- */
 
-$('#tabbar').innerHTML = TABS.map(([k, label, icon]) => `<button data-tab="${k}">${ico(icon)}<span>${label}</span></button>`).join('');
 applyTheme(S.settings.theme || 'reactor');
 SFX.enabled = S.settings.sound;
 checkAchievements(true);
