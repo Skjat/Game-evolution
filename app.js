@@ -6,7 +6,7 @@
    ===================================================================== */
 
 const STORAGE_KEY = 'lvlup.v1';
-const APP_VERSION = 20;   // совпадает с номером в sw.js (lvlup-vN)
+const APP_VERSION = 21;   // совпадает с номером в sw.js (lvlup-vN)
 const QUEST_MAX_REWARD = 5;   // максимум очков подвига в один параметр
 const QUEST_DAY_LIMIT = 3;    // один подвиг — не больше 3 раз за день
 const DATA_VERSION = 5;
@@ -1330,7 +1330,7 @@ function viewSettings() {
       Уровень персонажа растёт от суммы всех очков. Серия — сколько дней подряд ты прокачивался.
       Подвиги, ИИ-отчёт и кнопка «+» у цепочек двигают счётчики достижений: книги, километры, знакомства и т.д.
     </div>
-    <div class="ver">LEVEL UP · v3 · REACTOR</div>
+    <div class="ver">LEVEL UP · ВЕРСИЯ ${APP_VERSION} · ${esc(themeOf(S.settings.theme).name.toUpperCase())}</div>
   `;
 }
 
