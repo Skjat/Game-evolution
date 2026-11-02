@@ -64,9 +64,10 @@ async function addMember(env, league, member) {
   return { memberId: id, token };
 }
 
-async function addEvents(env, league, memberId, events) {
+// max: длина текста. События от телефонов — до 160 символов, события суда (с приговором) — до 420.
+async function addEvents(env, league, memberId, events, max = 160) {
   const list = (Array.isArray(events) ? events : []).slice(0, 15)
-    .map((e) => ({ kind: clip(e && e.kind, 16) || 'info', text: clip(e && e.text, 160), icon: clip(e && e.icon, 24) }))
+    .map((e) => ({ kind: clip(e && e.kind, 16) || 'info', text: clip(e && e.text, max), icon: clip(e && e.icon, 24) }))
     .filter((e) => e.text);
   if (!list.length) return;
   const t = now();
@@ -101,9 +102,9 @@ async function resolve(env, p) {
   if (status === 'pending') return p;
   await env.DB.prepare('UPDATE proposals SET status = ?, resolved_at = ? WHERE id = ? AND status = ?').bind(status, now(), p.id, 'pending').run();
   if (status === 'approved') {
-    await addEvents(env, p.league, p.target, [{ kind: 'verdict', text: `по решению лиги (${p.kind === 'praise' ? 'похвала' : 'донос'}): ${p.summary}`, icon: p.kind === 'praise' ? 'medal' : 'balance' }]);
+    await addEvents(env, p.league, p.target, [{ kind: 'verdict', text: `по решению лиги (${p.kind === 'praise' ? 'похвала' : 'донос'}): ${p.summary}`, icon: p.kind === 'praise' ? 'medal' : 'balance' }], 420);
   } else if (status === 'rejected' && p.kind === 'complaint') {
-    await addEvents(env, p.league, p.target, [{ kind: 'verdict', text: `оправдан судом лиги: ${p.summary}`, icon: 'balance' }]);
+    await addEvents(env, p.league, p.target, [{ kind: 'verdict', text: `оправдан судом лиги: ${p.summary}`, icon: 'balance' }], 420);
   }
   return { ...p, status, resolved_at: now() };
 }
@@ -286,7 +287,7 @@ async function route(req, env) {
         .bind(id, me.league, me.id, target.id, day, kind, text, summary, data, 'pending', t),
       env.DB.prepare('INSERT INTO votes (proposal, member, vote, created_at) VALUES (?, ?, 1, ?)').bind(id, me.id, t),
     ]);
-    await addEvents(env, me.league, me.id, [{ kind: 'report', text: `${kind === 'praise' ? 'похвалил' : 'донёс'}: ${target.name} — ${summary}`, icon: kind === 'praise' ? 'medal' : 'skull' }]);
+    await addEvents(env, me.league, me.id, [{ kind: 'report', text: `${kind === 'praise' ? 'похвалил' : 'донёс'}: ${target.name} — ${summary}`, icon: kind === 'praise' ? 'medal' : 'skull' }], 420);
     const p = await env.DB.prepare('SELECT * FROM proposals WHERE id = ?').bind(id).first();
     await resolve(env, p);
     return json(await board(env, me));
