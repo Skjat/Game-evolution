@@ -1,0 +1,5 @@
+# HTTPS-сертификат Let's Encrypt Caddy получает автоматически.
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy league:8787
+}
