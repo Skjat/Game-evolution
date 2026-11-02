@@ -6,7 +6,7 @@
    ===================================================================== */
 
 const STORAGE_KEY = 'lvlup.v1';
-const APP_VERSION = 19;   // совпадает с номером в sw.js (lvlup-vN)
+const APP_VERSION = 20;   // совпадает с номером в sw.js (lvlup-vN)
 const QUEST_MAX_REWARD = 5;   // максимум очков подвига в один параметр
 const QUEST_DAY_LIMIT = 3;    // один подвиг — не больше 3 раз за день
 const DATA_VERSION = 5;
@@ -1595,7 +1595,7 @@ function verdictItems(d) {
 const VERDICT_STATUS = { approved: 'утверждено лигой', rejected: 'отклонено', expired: 'истекло', withdrawn: 'отозвано автором' };
 function courtHTML(b, urgent) {
   const list = (b.proposals || []).filter((p) => p.status === 'pending' || Date.now() - (p.resolved_at || p.created_at) < 3 * 864e5);
-  if (!list.length) return '';
+  if (!list.length) return `<h2>Суд лиги</h2><div class="card small muted">Открытых голосований нет. Чтобы донести или похвалить, нажми на участника в таблице.</div>`;
   const card = (p) => {
     const praise = p.kind === 'praise', me = b.me;
     const pending = p.status === 'pending';

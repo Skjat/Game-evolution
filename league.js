@@ -37,11 +37,16 @@ const LEAGUE = (() => {
     if (body) headers['content-type'] = 'application/json';
     if (auth) headers.authorization = `Bearer ${c.memberId}.${c.token}`;
     let res;
+    // Таймаут: без него при плохой сети запрос может висеть минутами и блокировать следующие обновления.
+    const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = ctl && setTimeout(() => ctl.abort(), 20000);
     try {
-      res = await fetch(base + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+      res = await fetch(base + path, { method, headers, body: body ? JSON.stringify(body) : undefined, signal: ctl ? ctl.signal : undefined });
     } catch (e) {
+      if (timer) clearTimeout(timer);
       throw Object.assign(new Error('Нет связи с сервером лиги. Проверь интернет, а если включён VPN — выключи его или добавь workers.dev в исключения VPN'), { status: 0 });
     }
+    if (timer) clearTimeout(timer);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw Object.assign(new Error(data.error || `Ошибка сервера (${res.status})`), { status: res.status });
     return data;
