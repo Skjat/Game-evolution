@@ -66,6 +66,26 @@
 Эффекты синтезируются через Web Audio (`sound.js`), без аудиофайлов. Выключаются в «Ещё → Звук».
 На iPhone звук молчит в беззвучном режиме.
 
+## Лига друзей (онлайн)
+Вкладка «Лига»: таблица XP за неделю (сброс в понедельник, корона чемпиону прошлой недели), уровни, серии и
+коллекции позора, лента достижений, клейм и срывов с реакциями «Респект» и «Позор».
+На сервер уходит только сводка игрока; заметки и подробности дней остаются на телефоне.
+Друг вступает по приглашению вида `ABCD-EFGH@levelup.<поддомен>.workers.dev`.
+Код восстановления переносит участие на другой телефон.
+
+### Развёртывание сервера в Cloudflare (один раз)
+Сервер — `server/worker.js` (Cloudflare Worker) + база D1 (`server/schema.sql`). Его разворачивает GitHub Actions
+(`.github/workflows/deploy-server.yml`) при каждом изменении папки `server/`.
+1. Зарегистрируйся на cloudflare.com, открой **Workers & Pages** и выбери поддомен `*.workers.dev`.
+2. Скопируй **Account ID** (Workers & Pages → справа «Account details»).
+3. **My Profile → API Tokens → Create Token** → шаблон **Edit Cloudflare Workers** → добавь разрешение
+   **Account → D1 → Edit** → Create Token.
+4. В GitHub: **Settings → Secrets and variables → Actions** → секреты `CLOUDFLARE_API_TOKEN` и `CLOUDFLARE_ACCOUNT_ID`.
+5. **Actions → Deploy league server → Run workflow**. В итогах запуска будет адрес сервера:
+   `https://levelup.<поддомен>.workers.dev`.
+
+Бесплатного тарифа Cloudflare (100 000 запросов в день) с запасом хватает на лигу друзей.
+
 ## Установка на iPhone
 1. Включи GitHub Pages: репозиторий → **Settings → Pages** → Source: **Deploy from a branch**,
    Branch: **main**, папка **/ (root)** → Save. Через минуту сайт будет доступен по адресу
@@ -80,7 +100,8 @@ python3 -m http.server 8000
 ```
 
 Файлы: `index.html`, `style.css` (тема и анимации), `app.js` (логика, экраны, иконки),
-`achievements-db.js` (база достижений), `ai.js` (ИИ-отчёт), `sound.js` (звуки),
+`achievements-db.js` (база достижений), `ai.js` (ИИ-отчёт), `league.js` (лига), `sound.js` (звуки),
+`server/` (сервер лиги для Cloudflare),
 `vendor/` (Anthropic SDK, лицензия Apache 2.0),
 `sw.js` (офлайн-кэш), `manifest.webmanifest`, `icons/`, `fonts/` + `fonts.css`
 (Unbounded, Exo 2, JetBrains Mono — лицензия SIL OFL, встроены для работы офлайн).

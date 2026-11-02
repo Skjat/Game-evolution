@@ -1,0 +1,12 @@
+# Конфигурация Cloudflare Worker для лиги.
+# database_id подставляется автоматически при деплое через GitHub Actions
+# (.github/workflows/deploy-server.yml): база «levelup» создаётся, если её ещё нет.
+name = "levelup"
+main = "worker.js"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "levelup"
+database_id = "__DB_ID__"

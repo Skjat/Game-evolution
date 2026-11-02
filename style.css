@@ -553,6 +553,43 @@ body.hurt #view { animation: shake .45s cubic-bezier(.36, .07, .19, .97); }
 .lu.down .ups .arrow { color: var(--tox); }
 .btn.shamebtn { border: 1px solid var(--tox); color: var(--tox); background: rgba(157, 255, 58, .08); box-shadow: 0 0 16px rgba(157, 255, 58, .25); }
 
+/* ---------- Лига ---------- */
+.tabbar button { letter-spacing: .06em; font-size: 9px; }
+.tox { color: var(--tox); }
+.err { color: var(--bad); }
+.lgname { font: 900 20px var(--head); letter-spacing: .03em; background: linear-gradient(180deg, #fff, #ffc9a0 55%, var(--or)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.lrow { display: flex; align-items: center; gap: 10px; padding: 12px; margin-bottom: 8px; }
+.lrow.me { border-color: rgba(255, 122, 26, .6); box-shadow: 0 0 18px rgba(255, 70, 30, .2), inset 0 0 18px rgba(255, 70, 30, .08); }
+.rank { width: 26px; flex: none; text-align: center; font: 900 15px var(--head); color: var(--muted); }
+.rank.r1 { color: var(--am); text-shadow: 0 0 10px rgba(255, 176, 32, .8); }
+.rank.r2 { color: #d6dbe8; } .rank.r3 { color: #d4864a; }
+.mav { width: 40px; height: 40px; flex: none; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #2a0000;
+  background: radial-gradient(circle, #fff 0%, #ffb37a 20%, var(--or) 40%, var(--sc) 70%, #3a0306 100%); box-shadow: 0 0 12px rgba(255, 60, 30, .6); }
+.mav svg.i { width: 20px; height: 20px; stroke-width: 2; }
+.mav .emo { font-size: 20px; }
+.mav.big { width: 60px; height: 60px; } .mav.big svg.i { width: 30px; height: 30px; }
+.lname { display: flex; align-items: center; gap: 6px; font: 700 13px var(--head); letter-spacing: .03em; }
+.lname em { font: 600 9px var(--mono); font-style: normal; letter-spacing: .1em; text-transform: uppercase; color: var(--am); border: 1px solid rgba(255, 176, 32, .5); border-radius: 99px; padding: 1px 6px; }
+.crown svg.i { width: 16px; height: 16px; color: var(--am); filter: drop-shadow(0 0 6px var(--or)); }
+.lsub { display: block; font: 500 11px var(--body); color: var(--muted); margin-top: 3px; }
+.lval { display: inline-flex; align-items: center; gap: 4px; font: 900 18px var(--head); color: var(--am); text-shadow: 0 0 10px rgba(255, 122, 26, .6); white-space: nowrap; }
+.lval small { font: 600 10px var(--mono); color: var(--muted); text-shadow: none; }
+.lval svg.i { width: 18px; height: 18px; }
+.lval .neg { color: var(--tox); }
+.feed-item { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid rgba(255, 70, 50, .14); }
+.feed-item:last-child { border-bottom: 0; }
+.feed-item .fi { width: 34px; height: 34px; flex: none; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #ff8a5a; background: rgba(255, 90, 40, .1); border: 1px solid rgba(255, 90, 40, .3); }
+.feed-item .fi svg.i { width: 18px; height: 18px; }
+.feed-item.gold .fi { color: var(--am); border-color: rgba(255, 176, 32, .45); }
+.feed-item.tox .fi { color: var(--tox); border-color: rgba(157, 255, 58, .4); background: rgba(157, 255, 58, .08); }
+.feed-item.good .fi { color: #5dffb0; border-color: rgba(93, 255, 176, .4); }
+.feed-item .ft { font-size: 14px; line-height: 1.35; }
+.feed-item .fa { font: 500 10px var(--mono); color: var(--muted); }
+.react { display: inline-flex; align-items: center; gap: 4px; padding: 4px 9px; border-radius: 99px; border: 1px solid rgba(255, 90, 60, .25); background: rgba(255, 40, 30, .05); color: var(--muted); font: 600 11px var(--body); }
+.react svg.i { width: 13px; height: 13px; }
+.react b { color: var(--text); }
+.react.on { color: #fff; border-color: var(--or); background: rgba(255, 90, 30, .25); box-shadow: 0 0 10px rgba(255, 70, 30, .4); }
+
 /* Уважение к настройке «Уменьшить движение» */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }

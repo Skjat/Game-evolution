@@ -458,9 +458,13 @@ function checkAchievements(silent) {
     const top = cleared.reduce((m, a) => (a.goal > m.goal ? a : m), cleared[0]);
     toast(`Искупление: клеймо «${top.name}» снято`, 'gold', 'sparkle');
     SFX.play('achieve');
+    if (cleared.some((a) => a.kind === 'shame')) LEAGUE.push({ kind: 'redeem', text: `искупил клеймо «${top.name}»`, icon: 'sparkle' });
   }
   if (silent || !fresh.length) return;
   const good = fresh.filter((a) => a.kind !== 'shame'), bad = fresh.filter((a) => a.kind === 'shame');
+  if (good.length > 3) LEAGUE.push({ kind: 'ach', text: `открыл достижений: ${good.length}`, icon: 'trophy' });
+  else good.forEach((a) => LEAGUE.push({ kind: 'ach', text: a.kind === 'tier' ? `открыл «${a.name}» (${a.counter.name})` : `открыл «${a.name}»`, icon: a.icon }));
+  bad.slice(0, 3).forEach((a) => LEAGUE.push({ kind: 'shame', text: `получил клеймо «${a.name}»`, icon: 'skull' }));
   if (good.length > 3) toast(`Открыто достижений: ${good.length}`, 'gold', 'trophy');
   else good.forEach((a, i) => setTimeout(() => toast(
     a.kind === 'tier' ? `${a.counter.name}: «${a.name}» · ${rarityOf(a.counter, a.tier).name}` : 'Достижение: ' + a.name,
@@ -495,6 +499,9 @@ function mutate(fn) {
   render(false);
   if (ups.length || charUp) setTimeout(() => celebrate(ups, charUp), 450);
   else if (downs.length || charDown) setTimeout(() => degrade(downs, charDown, before.char), 450);
+  if (charUp) LEAGUE.push({ kind: 'level', text: `достиг ${charUp} уровня — ${titleFor(charUp)}`, icon: 'crown' });
+  if (charDown) LEAGUE.push({ kind: 'down', text: `деградировал до ${charDown} уровня`, icon: 'arrowDown' });
+  scheduleSync();
 }
 
 /* ---------------------- Эффекты ---------------------- */
@@ -629,7 +636,7 @@ let tab = 'hero';
 let curDate = todayKey();
 let histRange = 30;
 
-const TABS = [['hero', 'Герой', 'shieldStar'], ['day', 'Итоги', 'doc'], ['history', 'История', 'chart'], ['ach', 'Награды', 'trophy'], ['settings', 'Ещё', 'gear']];
+const TABS = [['hero', 'Герой', 'shieldStar'], ['day', 'Итоги', 'doc'], ['history', 'История', 'chart'], ['ach', 'Награды', 'trophy'], ['league', 'Лига', 'users'], ['settings', 'Ещё', 'gear']];
 
 function render(enter) {
   document.querySelectorAll('#tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
@@ -638,7 +645,7 @@ function render(enter) {
   v.querySelectorAll('[data-bar]').forEach((el) => { prev[el.dataset.bar] = el.style.width; });
 
   v.classList.remove('enter');
-  v.innerHTML = ({ hero: viewHero, day: viewDay, history: viewHistory, ach: viewAch, settings: viewSettings }[tab])();
+  v.innerHTML = ({ hero: viewHero, day: viewDay, history: viewHistory, ach: viewAch, league: viewLeague, settings: viewSettings }[tab])();
   if (enter) { void v.offsetWidth; v.classList.add('enter'); }
 
   // Шкалы плавно доезжают от прошлого значения (или от нуля при входе на экран).
@@ -1074,6 +1081,231 @@ function viewSettings() {
     </div>
     <div class="ver">LEVEL UP · v3 · REACTOR</div>
   `;
+}
+
+/* ---------------------- Лига друзей ---------------------- */
+
+function weekStartKey(k) { const d = parseKey(k); return addDays(k, -((d.getDay() + 6) % 7)); }   // понедельник
+
+// Сводка игрока для лиги — единственное, что уходит на сервер.
+function leagueProfile() {
+  const t = todayKey(), ws = weekStartKey(t), pws = addDays(ws, -7);
+  let week = 0, loss = 0, last = 0;
+  const src = { quests: 0, manual: 0, penalties: 0 };
+  for (const k in S.log) {
+    const d = S.log[k];
+    if (k >= ws && k <= t) {
+      week += dayTotal(d); loss += dayLoss(d);
+      for (const x of d.d || []) for (const id in x.r) if (statById(id)) src.quests += x.r[id];
+      for (const id in d.m || {}) if (statById(id) && d.m[id] > 0) src.manual += d.m[id];
+    } else if (k >= pws && k < ws) last += dayTotal(d);
+  }
+  src.penalties = loss;
+  const xp = statXP(), total = totalXP(xp), ch = levelInfo(total, charK());
+  const all = allAchievements(), totals = counterTotals();
+  const shameTitles = counterList(S).filter(isShame).map((c) => {
+    let top = null; c.tiers.forEach((x) => { if ((totals[c.id] || 0) >= x.goal) top = x; });
+    return top ? { t: top.title, g: top.goal } : null;
+  }).filter(Boolean).sort((a, b) => b.g - a.g).slice(0, 4).map((x) => x.t);
+  return {
+    v: 1, level: ch.level, title: titleFor(ch.level), xp: total, week, weekLoss: loss, weekStart: ws, lastWeek: last, lastWeekStart: pws,
+    streak: currentStreak(), best: bestStreak(), ach: all.filter((a) => a.kind !== 'shame' && a.ok).length,
+    shame: all.filter((a) => a.kind === 'shame' && a.ok).length, shameTitles,
+    stats: S.stats.slice(0, 8).map((s) => ({ n: s.name, i: s.icon, c: s.color, l: levelInfo(xp[s.id], STAT_K).level })),
+    src, today: dayTotal(getDay(t)), day: t,
+  };
+}
+
+let syncTimer = null, syncing = false;
+function scheduleSync(delay = 2500) {
+  if (!LEAGUE.joined()) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(syncNow, delay);
+}
+async function syncNow() {
+  if (!LEAGUE.joined() || syncing) return;
+  syncing = true;
+  try {
+    await LEAGUE.sync({ name: S.profile.name, avatar: S.profile.avatar, profile: leagueProfile() });
+  } catch (e) {
+    LEAGUE.set({ error: e.status === 401 ? 'Сервер больше не узнаёт тебя: восстанови доступ кодом или вступи заново' : e.message });
+  }
+  syncing = false;
+  if (tab === 'league' && $('#sheet').classList.contains('hidden')) render(false);
+}
+
+// Сервер лиги, развёрнутый в Cloudflare владельца приложения (можно поменять при создании лиги).
+const DEFAULT_LEAGUE_SERVER = 'https://levelup.anton2902.workers.dev';
+
+let leagueMode = 'week';
+const LEAGUE_MODES = [['week', 'Неделя'], ['level', 'Уровень'], ['streak', 'Серия'], ['shame', 'Позор']];
+
+function timeAgo(ms) {
+  const m = Math.max(0, Math.round((Date.now() - ms) / 60000));
+  if (m < 1) return 'только что';
+  if (m < 60) return `${m} мин назад`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} ч назад`;
+  const d = Math.round(h / 24);
+  return `${d} ${plural(d, 'день', 'дня', 'дней')} назад`;
+}
+const miniAvatar = (icon, cls = '') => `<span class="mav ${cls}">${ico(icon || 'reactor')}</span>`;
+
+function leagueRows(board) {
+  const ws = weekStartKey(todayKey()), pws = addDays(ws, -7);
+  const weekVal = (p) => (p.weekStart === ws ? p.week || 0 : 0);
+  const lastVal = (p) => (p.weekStart === pws ? p.week || 0 : p.lastWeekStart === pws ? p.lastWeek || 0 : 0);
+  const members = board.members.map((m) => ({ ...m, p: m.profile || {} }));
+  const champ = members.filter((m) => lastVal(m.p) > 0).sort((a, b) => lastVal(b.p) - lastVal(a.p))[0];
+  const val = {
+    week: (m) => weekVal(m.p),
+    level: (m) => (m.p.level || 1) * 1e6 + (m.p.xp || 0),
+    streak: (m) => m.p.streak || 0,
+    shame: (m) => m.p.shame || 0,
+  }[leagueMode];
+  return members.sort((a, b) => val(b) - val(a)).map((m, i) => {
+    const p = m.p, me = m.id === board.me;
+    let big, sub;
+    if (leagueMode === 'week') {
+      const v = weekVal(p), l = p.weekStart === ws ? p.weekLoss || 0 : 0;
+      big = `<span class="${v < 0 ? 'neg' : ''}">${sign(v)}</span><small>XP</small>`;
+      sub = `${esc(p.title || 'Новичок')} · ур. ${p.level || 1}${l ? ` · <span class="tox">${l} на слабостях</span>` : ''}`;
+    } else if (leagueMode === 'level') {
+      big = `${p.level || 1}<small>ур.</small>`;
+      sub = `${esc(p.title || 'Новичок')} · ${fmt(p.xp || 0)} XP`;
+    } else if (leagueMode === 'streak') {
+      big = `${p.streak || 0}${ico('flame')}`;
+      sub = `рекорд ${p.best || 0} ${plural(p.best || 0, 'день', 'дня', 'дней')}`;
+    } else {
+      big = `<span class="tox">${p.shame || 0}</span>${ico('skull')}`;
+      sub = (p.shameTitles || []).length ? `<span class="tox">${p.shameTitles.map(esc).join(' · ')}</span>` : 'чист, как слеза';
+    }
+    const stale = Date.now() - m.updated_at > 2 * 864e5 ? ' · давно не заходил' : '';
+    return `<button class="card lrow ${me ? 'me' : ''}" data-act="lg-member" data-id="${m.id}">
+      <span class="rank r${i + 1}">${i + 1}</span>
+      ${miniAvatar(m.avatar)}
+      <span class="grow"><span class="lname">${esc(m.name)}${me ? ' <em>ты</em>' : ''}${champ && champ.id === m.id ? `<span class="crown" title="Чемпион прошлой недели">${ico('crown')}</span>` : ''}</span>
+        <span class="lsub">${sub}${stale}</span></span>
+      <span class="lval">${big}</span>
+    </button>`;
+  }).join('');
+}
+
+function leagueFeed(board) {
+  const KIND = { shame: 'tox', down: 'tox', debuff: 'tox', redeem: 'good', ach: 'gold', level: 'gold' };
+  return (board.feed || []).slice(0, 40).map((e) => {
+    const r = e.reactions || {};
+    const btn = (k, icon, label) => `<button class="react ${r[k] && r[k].mine ? 'on' : ''}" data-act="lg-react" data-id="${e.id}" data-k="${k}">${ico(icon)}${label}${r[k] ? ` <b>${r[k].n}</b>` : ''}</button>`;
+    return `<div class="feed-item ${KIND[e.kind] || ''}">
+      <span class="fi">${ico(e.icon || 'bolt')}</span>
+      <div class="grow">
+        <div class="ft">${e.name ? `<b>${esc(e.name)}</b> ` : ''}${esc(e.text)}</div>
+        <div class="row" style="gap:6px;margin-top:6px">
+          <span class="fa">${timeAgo(e.created_at)}</span><span class="grow"></span>
+          ${btn('respect', 'flame', 'Респект')}${btn('lol', 'skull', 'Позор')}
+        </div>
+      </div>
+    </div>`;
+  }).join('') || '<div class="empty">Пока тихо. Открой достижение — и лига узнает.</div>';
+}
+
+function viewLeague() {
+  const c = LEAGUE.cfg();
+  if (!LEAGUE.joined(c)) {
+    return `
+      <h1>Лига</h1>
+      <div class="card small muted">Соревнуйся с друзьями: таблица XP за неделю, уровни, серии и коллекции позора, лента достижений и срывов. На сервер уходит только сводка — заметки и подробности дней остаются на телефоне.</div>
+      <h2>Вступить по приглашению</h2>
+      <div class="card">
+        <input type="text" id="lg-invite" placeholder="ABCD-EFGH@levelup.имя.workers.dev" autocapitalize="off" autocomplete="off" spellcheck="false">
+        <button class="btn primary block" data-act="lg-join" style="margin-top:10px">${ico('users')} Вступить</button>
+      </div>
+      <h2>Создать свою лигу</h2>
+      <div class="card">
+        <label class="f" style="margin-top:0">Адрес сервера</label>
+        <input type="text" id="lg-server" value="${esc(c.server || DEFAULT_LEAGUE_SERVER)}" placeholder="https://levelup.имя.workers.dev" autocapitalize="off" autocomplete="off" spellcheck="false">
+        <label class="f">Название лиги</label>
+        <input type="text" id="lg-name" placeholder="Лига героев" maxlength="40">
+        <button class="btn block" data-act="lg-create" style="margin-top:12px">${ico('crown')} Создать лигу</button>
+        <div class="small muted" style="margin-top:10px">Сервер разворачивается в твоём аккаунте Cloudflare — инструкция в README репозитория.</div>
+      </div>
+      <h2>Перенос с другого телефона</h2>
+      <div class="card">
+        <input type="text" id="lg-restore" placeholder="LVR1.…" autocapitalize="off" autocomplete="off" spellcheck="false">
+        <button class="btn block" data-act="lg-restore" style="margin-top:10px">Восстановить по коду</button>
+      </div>
+      <div class="small" id="lg-status" style="margin-top:10px"></div>`;
+  }
+  const b = c.board;
+  return `
+    <div class="sub"><span class="dot"></span>league · ${esc(c.code)}</div>
+    <div class="card sweep">
+      <div class="row between">
+        <div class="grow"><div class="lgname">${esc(c.name || 'Лига')}</div>
+          <div class="sx">${b ? `${b.members.length} ${plural(b.members.length, 'участник', 'участника', 'участников')} · ` : ''}${c.lastSync ? 'обновлено ' + timeAgo(c.lastSync) : 'ещё не синхронизировано'}</div></div>
+        <button class="icon-btn" data-act="lg-refresh" aria-label="Обновить">${ico('bolt')}</button>
+      </div>
+      ${c.error ? `<div class="small err" style="margin-top:8px">${esc(c.error)}</div>` : ''}
+      <div class="row" style="margin-top:12px">
+        <button class="btn grow" data-act="lg-invite">${ico('upload')} Пригласить</button>
+      </div>
+    </div>
+    <div class="seg">${LEAGUE_MODES.map(([k, l]) => `<button data-act="lg-mode" data-m="${k}" class="${leagueMode === k ? 'active' : ''}">${l}</button>`).join('')}</div>
+    ${b ? leagueRows(b) : '<div class="empty">Загружаю таблицу…</div>'}
+    <h2>Лента лиги</h2>
+    <div class="card">${b ? leagueFeed(b) : ''}</div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn grow sm" data-act="lg-recovery">Код восстановления</button>
+      <button class="btn grow sm danger" data-act="lg-leave">Покинуть лигу</button>
+    </div>`;
+}
+
+function memberSheet(id) {
+  const b = LEAGUE.cfg().board;
+  const m = b && b.members.find((x) => x.id === id);
+  if (!m) return;
+  const p = m.profile || {}, ws = weekStartKey(todayKey());
+  const src = p.src || {};
+  openSheet(`
+    <div class="row" style="gap:14px">${miniAvatar(m.avatar, 'big')}
+      <div class="grow"><h1 style="margin:0">${esc(m.name)}</h1><div class="hero-title" style="letter-spacing:.12em">${esc(p.title || 'Новичок')} · ${p.level || 1} уровень</div></div></div>
+    <div class="kpis">
+      <div class="kpi"><b>${sign(p.weekStart === ws ? p.week || 0 : 0)}</b><span>XP за неделю</span></div>
+      <div class="kpi"><b>${p.streak || 0}</b><span>серия</span></div>
+      <div class="kpi"><b>${p.ach || 0}</b><span>наград</span></div>
+    </div>
+    ${(p.stats || []).length ? `<h2>Параметры</h2><div class="chips">${p.stats.map((s) => `<span class="chip" style="color:${s.c}">${ico(s.i)}${esc(s.n)} ${s.l}</span>`).join('')}</div>` : ''}
+    ${p.weekStart === ws ? `<h2>Откуда XP за неделю</h2><div class="card small">
+      <div class="row between"><span>Подвиги</span><b>+${src.quests || 0}</b></div>
+      <div class="row between"><span>Вручную</span><b>+${src.manual || 0}</b></div>
+      <div class="row between tox"><span>Слабости и штрафы</span><b>${src.penalties || 0}</b></div></div>` : ''}
+    <h2 class="bad-h">Позор</h2>
+    <div class="card small">${(p.shameTitles || []).length ? `<span class="tox">${ico('skull')} ${p.shameTitles.map(esc).join(' · ')}</span><div class="muted" style="margin-top:6px">Всего клейм: ${p.shame || 0}</div>` : 'Клейм нет. Пока.'}</div>
+    <div class="sx" style="margin-top:12px;text-align:center">обновлено ${timeAgo(m.updated_at)}</div>
+  `);
+}
+
+async function leagueAction(fn, okMsg) {
+  const st = $('#lg-status');
+  if (st) { st.className = 'small muted'; st.textContent = 'Связываюсь с сервером…'; }
+  try {
+    await fn();
+    if (okMsg) toast(okMsg, 'gold', 'users');
+    SFX.play('confirm');
+    await syncNow();
+    render(true);
+  } catch (e) {
+    SFX.play('error');
+    if (st) { st.className = 'small err'; st.textContent = '✕ ' + (e.message || e); } else toast(e.message || String(e));
+  }
+}
+
+async function shareText(text, okMsg) {
+  try {
+    if (navigator.share) { await navigator.share({ text }); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  try { await navigator.clipboard.writeText(text); toast(okMsg || 'Скопировано', 'gold', 'check'); }
+  catch (e) { toast('Не удалось скопировать'); }
 }
 
 /* ---------------------- Редакторы (шторки) ---------------------- */
@@ -1521,6 +1753,7 @@ function aiApply() {
       const q = S.debuffs.find((y) => y.id === x.id);
       if (!q) return;
       for (let i = 0; i < x.count; i++) day.b.push({ q: q.id, n: q.name, i: q.icon, r: clone(q.rewards), c: clone(q.c || {}) });
+      LEAGUE.push({ kind: 'debuff', text: `сорвался: ${q.name}${x.count > 1 ? ' ×' + x.count : ''} (${Object.values(q.rewards).reduce((a, v) => a + v, 0) * x.count} XP)`, icon: q.icon });
       Object.entries(q.rewards).forEach(([k, v]) => { gained[k] = (gained[k] || 0) + v * x.count; });
     });
     r.stats.forEach((x) => {
@@ -1628,6 +1861,7 @@ document.addEventListener('click', (e) => {
     SFX.play('tab');
     if (tb.dataset.tab === 'day') curDate = todayKey();
     go(tb.dataset.tab);
+    if (tb.dataset.tab === 'league') syncNow();
     return;
   }
   if (e.target.id === 'sheet') { closeSheet(); return; }
@@ -1676,6 +1910,7 @@ document.addEventListener('click', (e) => {
       const q = (S.debuffs || []).find((x) => x.id === id);
       if (!q) break;
       const [x, y] = [e.clientX || centerOf(el)[0], e.clientY || centerOf(el)[1]];
+      LEAGUE.push({ kind: 'debuff', text: `сорвался: ${q.name} (${Object.values(q.rewards).reduce((a, v) => a + v, 0)} XP)`, icon: q.icon });
       mutate(() => { ensureDay(curDate).b.push({ q: q.id, n: q.name, i: q.icon, r: clone(q.rewards), c: clone(q.c || {}) }); });
       const card = $(`[data-act=debuff][data-id="${id}"]`);
       if (card) card.classList.add('hit');
@@ -1692,7 +1927,46 @@ document.addEventListener('click', (e) => {
       break;
     case 'open-day': curDate = el.dataset.k; go('day'); break;
     case 'range': histRange = Number(el.dataset.r); render(true); break;
-    case 'avatar': S.profile.avatar = el.dataset.a; save(); render(false); break;
+    case 'avatar': S.profile.avatar = el.dataset.a; save(); render(false); scheduleSync(); break;
+
+    /* --- Лига --- */
+    case 'lg-mode': leagueMode = el.dataset.m; render(false); break;
+    case 'lg-refresh': LEAGUE.set({ error: '' }); syncNow(); break;
+    case 'lg-member': memberSheet(id); break;
+    case 'lg-create': {
+      const server = $('#lg-server').value, name = $('#lg-name').value.trim() || 'Лига героев';
+      if (!server.trim()) { toast('Укажи адрес сервера'); break; }
+      leagueAction(() => LEAGUE.create(server, name, { name: S.profile.name, avatar: S.profile.avatar, profile: leagueProfile() }), 'Лига создана — пригласи друзей');
+      break;
+    }
+    case 'lg-join':
+      leagueAction(() => LEAGUE.join($('#lg-invite').value, $('#lg-server') ? $('#lg-server').value : '', { name: S.profile.name, avatar: S.profile.avatar, profile: leagueProfile() }), 'Ты в лиге!');
+      break;
+    case 'lg-restore':
+      leagueAction(async () => { LEAGUE.restore($('#lg-restore').value); await LEAGUE.refresh(); }, 'Доступ восстановлен');
+      break;
+    case 'lg-invite': {
+      const c = LEAGUE.cfg();
+      shareText(`Вступай в мою лигу «${c.name}» в Level Up!
+
+1. Открой https://skjat.github.io/Game-evolution/ в Safari и добавь на экран «Домой».
+2. Вкладка «Лига» → вставь приглашение:
+${LEAGUE.invite(c)}`, 'Приглашение скопировано');
+      break;
+    }
+    case 'lg-recovery':
+      openSheet(`<h1>Код восстановления</h1>
+        <div class="small muted">Им можно перенести участие в лиге на другой телефон. Кто знает этот код — может играть за тебя, никому его не показывай.</div>
+        <textarea readonly style="margin-top:12px;font:500 13px var(--mono)">${esc(LEAGUE.recoveryCode())}</textarea>
+        <button class="btn primary block" data-act="lg-copy-rec" style="margin-top:10px">Скопировать</button>`);
+      break;
+    case 'lg-copy-rec': shareText(LEAGUE.recoveryCode(), 'Код скопирован'); break;
+    case 'lg-react':
+      LEAGUE.react(Number(id), el.dataset.k).then(() => render(false)).catch((err) => toast(err.message));
+      break;
+    case 'lg-leave':
+      if (confirm('Покинуть лигу? Твоя строка исчезнет из таблицы.')) LEAGUE.leave().then(() => { toast('Ты вышел из лиги'); render(true); }).catch((err) => toast(err.message));
+      break;
     case 'close-lu': { const lu = el.closest('.lu'); lu.style.transition = 'opacity .3s'; lu.style.opacity = '0'; setTimeout(() => lu.remove(), 300); break; }
     case 'close-sheet': closeSheet(); break;
 
@@ -1860,6 +2134,7 @@ document.addEventListener('click', (e) => {
 });
 
 const SOUND_FOR = {
+  'lg-create': null, 'lg-join': null, 'lg-restore': null, 'lg-react': 'zap',
   inc: 'zap', dec: 'down', quest: 'quest', 'undo-quest': 'down', debuff: null, 'undo-debuff': 'tap', 'rm-ms': 'down', 'rm-counter': 'down',
   'counter-add': 'zap', 'ms-done': null, 'ai-send': null, 'ai-apply': null, 'ai-test': null, sound: null, 'close-lu': 'tap',
 };
@@ -1874,6 +2149,7 @@ document.addEventListener('input', (e) => {
   } else if (e.target.id === 'pname') {
     S.profile.name = e.target.value.trim() || 'Герой';
     save();
+    scheduleSync(4000);
   }
 });
 document.addEventListener('change', (e) => {
@@ -1890,7 +2166,9 @@ document.addEventListener('change', (e) => {
 // При возвращении в приложение после полуночи — обновить «сегодня».
 let lastToday = todayKey();
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && todayKey() !== lastToday) {
+  if (document.visibilityState !== 'visible') return;
+  scheduleSync(300);
+  if (todayKey() !== lastToday) {
     if (curDate === lastToday) curDate = todayKey();
     lastToday = todayKey();
     render(false);
@@ -1904,6 +2182,7 @@ SFX.enabled = S.settings.sound;
 checkAchievements(true);
 save();
 render(true);
+scheduleSync(800);
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});

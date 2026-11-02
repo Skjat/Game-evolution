@@ -1,5 +1,5 @@
 // Service worker: offline-кэш. При изменении файлов увеличивай VERSION.
-const VERSION = 'lvlup-v6';
+const VERSION = 'lvlup-v7';
 const ASSETS = [
   './',
   './index.html',
@@ -8,6 +8,7 @@ const ASSETS = [
   './achievements-db.js',
   './sound.js',
   './ai.js',
+  './league.js',
   './vendor/anthropic-sdk.mjs',
   './manifest.webmanifest',
   './fonts.css',
