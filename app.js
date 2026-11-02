@@ -82,13 +82,18 @@ const ICONS = {
   couch: '<path d="M4 11V8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3 M2 13a2 2 0 0 1 4 0v2h12v-2a2 2 0 0 1 4 0v5H2z M4 18v2M20 18v2"/>',
   cart: '<path d="M3 4h2l3 11h10l3-8H6.5"/><circle cx="9" cy="20" r="1.3"/><circle cx="17" cy="20" r="1.3"/>',
   arrowDown: '<path d="M12 4v16M5 13l7 7 7-7"/>',
+  clover: [0, 72, 144, 216, 288].map((r) => `<path transform="rotate(${r} 12 11)" d="M12 11c-1.7-1.4-3.4-3.3-2.2-4.8.8-1 2.2-.6 2.2.5 0-1.1 1.4-1.5 2.2-.5 1.2 1.5-.5 3.4-2.2 4.8z"/>`).join('') + '<path d="M12 11c.6 3.5 1.8 6.5 4 10"/>',
+  snowflake: '<path d="M12 2v20M3.3 7l17.4 10M3.3 17L20.7 7M9.5 3.5L12 6l2.5-2.5M9.5 20.5L12 18l2.5 2.5"/>',
+  planet: '<circle cx="12" cy="12" r="5.5"/><ellipse cx="12" cy="12" rx="10.5" ry="3.5" transform="rotate(-20 12 12)"/>',
+  terminal: '<rect x="2.5" y="4" width="19" height="16" rx="2"/><path d="M6.5 9l3 3-3 3M12 15h5"/>',
+  sprout: '<path d="M12 21v-8M12 13c0-4-3-6-7-6 0 4 3 6 7 6zM12 11c0-3 2.5-5 6-5 0 3-2.5 5-6 5z"/>',
 };
 const ICON_CHOICES = ['sword', 'swift', 'shield', 'hex', 'eye', 'crown', 'flame', 'bolt', 'star', 'gem', 'atom', 'moon', 'sun',
   'dumbbell', 'wind', 'lotus', 'ball', 'book', 'cap', 'candle', 'link', 'mic', 'leaf', 'heart', 'brush', 'note', 'coin',
   'target', 'rocket', 'compass', 'globe', 'pen', 'home', 'skull', 'claw', 'seed', 'mountain', 'bike', 'swim', 'drop',
   'chat', 'users', 'hourglass', 'briefcase', 'wallet', 'pot', 'phoneOff', 'tree', 'gift', 'camera', 'plane', 'sparkle',
-  'burger', 'candy', 'bottle', 'cigarette', 'couch', 'cart'];
-const AVATAR_CHOICES = ['reactor', 'flame', 'skull', 'eye', 'crown', 'sword', 'star', 'moon', 'claw', 'atom', 'gem', 'bolt'];
+  'burger', 'candy', 'bottle', 'cigarette', 'couch', 'cart', 'clover', 'snowflake', 'planet', 'terminal', 'sprout'];
+const AVATAR_CHOICES = ['reactor', 'flame', 'skull', 'eye', 'crown', 'sword', 'star', 'moon', 'claw', 'atom', 'gem', 'bolt', 'clover', 'terminal', 'sprout', 'planet', 'snowflake', 'heart'];
 
 const ico = (k, cls = '') => ICONS[k]
   ? `<svg class="i ${cls}" viewBox="0 0 24 24">${ICONS[k]}</svg>`
@@ -126,6 +131,34 @@ const TITLES = [
   [1, 'Новичок'], [3, 'Ученик'], [5, 'Искатель'], [8, 'Странник'], [12, 'Воин'],
   [16, 'Ветеран'], [20, 'Мастер'], [25, 'Герой'], [32, 'Чемпион'], [40, 'Легенда'], [50, 'Мифический'],
 ];
+
+/* ---------------------- Темы оформления ---------------------- */
+
+// fx: neon — игровые свечения; calm — спокойно, без эффектов; crt — терминал; magic — гримуар.
+const THEMES = [
+  { id: 'reactor', name: 'Алый реактор', desc: 'Игровая: неон, лазеры, ядро реактора', fx: 'neon', meta: '#050203', particles: 0, avatar: 'reactor',
+    sw: ['#ff1f3d', '#ff7a1a', '#ffb020', '#050203'],
+    stats: { str: '#ff2340', agi: '#ffc23d', end: '#ff7a1a', int: '#ff5c8a', wis: '#ffcfa3', cha: '#ff3dbb' },
+    text: { sub: 'reactor core · online', cta: 'Зарядить ядро', done: 'Ядро заряжено', up: 'ПЕРЕГРУЗКА ЯДРА', stat: 'ПРОКАЧКА', down: 'ДЕГРАДАЦИЯ', ai: 'Ядро анализирует день', ok: 'Принять силу' } },
+  { id: 'light', name: 'Минимал', desc: 'Светлая и чистая: белые карточки, без эффектов', fx: 'calm', meta: '#f4f5f7', particles: 0, avatar: 'star',
+    sw: ['#4f5bd5', '#6b77ee', '#ffffff', '#f4f5f7'],
+    stats: { str: '#e5484d', agi: '#f2a20d', end: '#f76b15', int: '#4f5bd5', wis: '#12a594', cha: '#d6409f' },
+    text: { sub: 'мой прогресс', cta: 'Подвести итоги дня', done: 'Итоги подведены', up: 'Новый уровень', stat: 'Параметр вырос', down: 'Уровень снижен', ai: 'Анализирую день', ok: 'Отлично' } },
+  { id: 'terminal', name: 'Терминал', desc: 'Техно: зелёный фосфор, моноширинный шрифт', fx: 'crt', meta: '#000000', particles: 0, avatar: 'terminal',
+    sw: ['#39ff88', '#00d65c', '#ffd400', '#000000'],
+    stats: { str: '#ff5f5f', agi: '#ffd400', end: '#ff9f1c', int: '#39ff88', wis: '#5ec8ff', cha: '#e07bff' },
+    text: { sub: '> system ready', cta: '> run daily_report', done: '> report.ok', up: 'LEVEL_UP', stat: 'STAT_UP', down: 'SYSTEM_DEGRADED', ai: '> parsing day.log', ok: '> ok' } },
+  { id: 'zen', name: 'Дзен', desc: 'Тёмная и тихая: шалфей, песок, мягкое дыхание', fx: 'calm', meta: '#14171a', particles: 12, avatar: 'sprout',
+    sw: ['#8fb39a', '#d8b98a', '#e8e4dc', '#14171a'],
+    stats: { str: '#c9846a', agi: '#d8b98a', end: '#b8a27a', int: '#8fa9c4', wis: '#8fb39a', cha: '#c49ab8' },
+    text: { sub: 'шаг за шагом', cta: 'Записать день', done: 'День записан', up: 'Новая ступень', stat: 'Рост', down: 'Шаг назад', ai: 'Размышляю над днём', ok: 'Спасибо' } },
+  { id: 'grimoire', name: 'Чёрный гримуар', desc: 'Аниме в духе «Чёрного клевера»: тьма, изумруд, золото', fx: 'magic', meta: '#030503', particles: 26, avatar: 'clover',
+    sw: ['#13b865', '#4dff9a', '#e8c35a', '#030503'],
+    stats: { str: '#e8c35a', agi: '#4dff9a', end: '#2ec4a0', int: '#6fb6ff', wis: '#d8f5d0', cha: '#c58bff' },
+    text: { sub: 'гримуар пробуждён', cta: 'Наполнить гримуар', done: 'Гримуар наполнен', up: 'ГРИМУАР ПРОБУЖДЁН', stat: 'НОВОЕ ЗАКЛИНАНИЕ', down: 'АНТИМАГИЯ', ai: 'Гримуар читает день', ok: 'Превзойти себя' } },
+];
+const themeOf = (id) => THEMES.find((t) => t.id === id) || THEMES[0];
+const TT = () => themeOf((S && S.settings && S.settings.theme) || 'reactor').text;
 
 /* ---------------------- Утилиты ---------------------- */
 
@@ -172,7 +205,7 @@ function defaultState() {
     // 'YYYY-MM-DD' -> { m: {statId: очки}, d: [{q, n, i, r, c}], c: {counterId: n}, ms: [milestoneId], note }
     log: {},
     ach: {},   // achievementId -> dateKey
-    settings: { sound: true },
+    settings: { sound: true, theme: 'reactor' },
     custom: { counters: [], milestones: [] },   // свои достижения игрока
     shared: { counters: [], milestones: [] },   // общие достижения лиги (приходят с сервера)
     created: todayKey(),
@@ -208,7 +241,7 @@ function migrate(s) {
   if (v < 5 && Array.isArray(s.debuffs)) {   // новые слабости по умолчанию
     for (const d of DEFAULT_DEBUFFS) if (['b_night', 'b_overeat', 'b_energy'].includes(d.id) && !s.debuffs.find((x) => x.id === d.id)) s.debuffs.push(clone(d));
   }
-  s.settings = Object.assign({ sound: true }, s.settings || {});
+  s.settings = Object.assign({ sound: true, theme: 'reactor' }, s.settings || {});
   s.custom = Object.assign({ counters: [], milestones: [] }, s.custom || {});
   s.shared = Object.assign({ counters: [], milestones: [] }, s.shared || {});
   s.v = DATA_VERSION;
@@ -596,10 +629,10 @@ function celebrate(ups, charLvl) {
     <div class="sparks">${sparks}</div>
     <div class="box">
       ${reactorHTML(S.profile.avatar, '')}
-      <div class="t">${charLvl ? 'ПЕРЕГРУЗКА ЯДРА' : 'ПРОКАЧКА'}</div>
+      <div class="t">${charLvl ? TT().up : TT().stat}</div>
       ${charLvl ? `<div class="lv">${charLvl}</div><div class="lt">уровень · ${titleFor(charLvl)}</div>` : ''}
       ${rows ? `<div class="ups">${rows}</div>` : '<div style="height:16px"></div>'}
-      <button class="btn primary block" data-act="close-lu">Принять силу</button>
+      <button class="btn primary block" data-act="close-lu">${esc(TT().ok)}</button>
     </div>`;
   document.body.appendChild(el);
 }
@@ -631,7 +664,7 @@ function degrade(downs, charLvl, fromChar) {
     <div class="debris">${debris}</div>
     <div class="box">
       <div class="dcore">${ico('arrowDown')}</div>
-      <div class="t">ДЕГРАДАЦИЯ</div>
+      <div class="t">${TT().down}</div>
       ${charLvl ? `<div class="lv">${fromChar} → ${charLvl}</div><div class="lt">уровень персонажа упал · ${titleFor(charLvl)}</div>` : '<div class="lt">ты стал слабее</div>'}
       ${rows ? `<div class="ups">${rows}</div>` : '<div style="height:16px"></div>'}
       <button class="btn block shamebtn" data-act="close-lu">Я исправлюсь</button>
@@ -652,7 +685,9 @@ function rewardsHTML(r) {
   return parts.join('') || '<span>без наград</span>';
 }
 const barHTML = (key, pct, color) =>
-  `<div class="bar"><i data-bar="${key}" data-w="${(clamp(pct, 0, 1) * 100).toFixed(1)}" style="--c:${color};background:linear-gradient(90deg,${color}99,${color})"></i></div>`;
+  `<div class="bar"><i data-bar="${key}" data-w="${(clamp(pct, 0, 1) * 100).toFixed(1)}" style="${color === 'accent'
+    ? '--c:var(--sc);background:linear-gradient(90deg,var(--sc),var(--or))'
+    : `--c:${color};background:linear-gradient(90deg,${color}99,${color})`}"></i></div>`;
 
 /* ---------------------- Экраны ---------------------- */
 
@@ -691,16 +726,16 @@ function radarSVG(xp) {
   const pt = (i, r) => { const a = -Math.PI / 2 + (i * 2 * Math.PI) / n; return [cx + Math.cos(a) * r, cy + Math.sin(a) * r]; };
   const f = (v) => v.toFixed(1);
   let g = `<defs>
-    <radialGradient id="rf"><stop offset="0" stop-color="#ff7a1a" stop-opacity=".55"/><stop offset="1" stop-color="#ff1f3d" stop-opacity=".18"/></radialGradient>
+    <radialGradient id="rf"><stop offset="0" style="stop-color:var(--or)" stop-opacity=".55"/><stop offset="1" style="stop-color:var(--sc)" stop-opacity=".18"/></radialGradient>
     <filter id="rglow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
     <filter id="iglow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
   </defs>`;
-  for (let k = 1; k <= 4; k++) g += `<circle cx="${cx}" cy="${cy}" r="${R * k / 4}" fill="none" stroke="rgba(255,60,40,.22)"/>`;
-  S.stats.forEach((_, i) => { const [x, y] = pt(i, R); g += `<line x1="${cx}" y1="${cy}" x2="${f(x)}" y2="${f(y)}" stroke="rgba(255,60,40,.22)"/>`; });
+  for (let k = 1; k <= 4; k++) g += `<circle cx="${cx}" cy="${cy}" r="${R * k / 4}" fill="none" style="stroke:rgba(var(--g1-rgb),.22)"/>`;
+  S.stats.forEach((_, i) => { const [x, y] = pt(i, R); g += `<line x1="${cx}" y1="${cy}" x2="${f(x)}" y2="${f(y)}" style="stroke:rgba(var(--g1-rgb),.22)"/>`; });
   const pts = levels.map((l, i) => pt(i, R * Math.max(0.07, l / max)).map(f).join(',')).join(' ');
   g += `<polygon class="fillp" points="${pts}" fill="url(#rf)"/>`;
-  g += `<polygon class="shape" pathLength="1" points="${pts}" fill="none" stroke="#ff5a2a" stroke-width="2.5" stroke-linejoin="round" filter="url(#rglow)"/>`;
-  g += `<polygon class="shape" pathLength="1" points="${pts}" fill="none" stroke="#fff3e6" stroke-width="1" stroke-linejoin="round"/>`;
+  g += `<polygon class="shape" pathLength="1" points="${pts}" fill="none" style="stroke:var(--or)" stroke-width="2.5" stroke-linejoin="round" filter="url(#rglow)"/>`;
+  g += `<polygon class="shape" pathLength="1" points="${pts}" fill="none" style="stroke:var(--hot)" stroke-width="1" stroke-linejoin="round"/>`;
   levels.forEach((l, i) => {
     const [x, y] = pt(i, R * Math.max(0.07, l / max));
     g += `<circle class="pt" cx="${f(x)}" cy="${f(y)}" r="3.5" fill="#fff" stroke="${S.stats[i].color}" stroke-width="2" filter="url(#iglow)" style="transform-box:fill-box;transform-origin:center;animation-delay:${.9 + i * .06}s"/>`;
@@ -710,7 +745,7 @@ function radarSVG(xp) {
     const icon = ICONS[s.icon]
       ? `<svg x="${f(x - 10)}" y="${f(y - 17)}" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${s.color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" filter="url(#iglow)">${ICONS[s.icon]}</svg>`
       : `<text x="${f(x)}" y="${f(y - 2)}" text-anchor="middle" font-size="17">${esc(s.icon)}</text>`;
-    g += icon + `<text x="${f(x)}" y="${f(y + 16)}" text-anchor="middle" font-size="12" font-weight="700" fill="#ffe2c4" style="font-family:Unbounded,sans-serif">${levels[i]}</text>`;
+    g += icon + `<text x="${f(x)}" y="${f(y + 16)}" text-anchor="middle" font-size="12" font-weight="700" style="fill:var(--text);font-family:var(--head)">${levels[i]}</text>`;
   });
   return `<svg class="radar" viewBox="0 0 340 288">${g}</svg>`;
 }
@@ -745,14 +780,14 @@ function viewHero() {
   }).join('');
 
   return `
-    <div class="sub"><span class="dot"></span>reactor core · online</div>
+    <div class="sub"><span class="dot"></span>${esc(TT().sub)}</div>
     <div class="card sweep">
       <div class="hero">
         ${reactorHTML(S.profile.avatar, 'LVL ' + ch.level)}
         <div class="hero-name">${esc(S.profile.name)}</div>
         <div class="hero-title">${titleFor(ch.level)} · ${ch.level} уровень</div>
         <div class="xpwrap">
-          ${barHTML('char', ch.pct, '#ff4a2a')}
+          ${barHTML('char', ch.pct, 'accent')}
           <div class="xpt">${ch.into} / ${ch.need} XP → ${ch.level + 1} уровень</div>
         </div>
       </div>
@@ -763,8 +798,8 @@ function viewHero() {
       </div>
     </div>
     ${todayDone
-      ? `<button class="cta done" data-act="go-today">${ico('bolt')} Ядро заряжено · ${sign(dayTotal(tday))} XP</button>`
-      : `<button class="cta" data-act="go-today">${ico('doc')} Зарядить ядро</button>`}
+      ? `<button class="cta done" data-act="go-today">${ico('bolt')} ${esc(TT().done)} · ${sign(dayTotal(tday))} XP</button>`
+      : `<button class="cta" data-act="go-today">${ico('doc')} ${esc(TT().cta)}</button>`}
     ${S.stats.length >= 3 ? `<div class="card" style="padding:8px 6px 4px">${radarSVG(xp)}</div>` : ''}
     <h2>Параметры</h2>
     ${stats || `<div class="empty">${ico('hex')}<div>Добавь параметры в разделе «Ещё»</div></div>`}
@@ -881,10 +916,10 @@ function viewHistory() {
   const bw = (W - padL) / days.length;
   const yT = (v) => H - padB - ((v - minV) / (maxV - minV)) * (H - padB - padT);
   let bars = `<defs><filter id="cglow" x="-50%" y="-20%" width="200%" height="140%"><feGaussianBlur stdDeviation="2.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`;
-  if (minV < 0) bars += `<line x1="${padL}" x2="${W}" y1="${yT(0)}" y2="${yT(0)}" stroke="rgba(255,220,200,.25)"/>`;
+  if (minV < 0) bars += `<line x1="${padL}" x2="${W}" y1="${yT(0)}" y2="${yT(0)}" style="stroke:rgba(var(--tint-rgb),.25)"/>`;
   for (let g = 0; g <= 2; g++) {
     const v = Math.round((maxV * g) / 2), y = yT(v);
-    bars += `<line x1="${padL}" x2="${W}" y1="${y}" y2="${y}" stroke="rgba(255,60,40,.15)" stroke-dasharray="2 4"/><text x="${padL - 5}" y="${y + 4}" font-size="10" fill="rgba(255,220,200,.5)" text-anchor="end" style="font-family:'JetBrains Mono',monospace">${v}</text>`;
+    bars += `<line x1="${padL}" x2="${W}" y1="${y}" y2="${y}" style="stroke:rgba(var(--g1-rgb),.15)" stroke-dasharray="2 4"/><text x="${padL - 5}" y="${y + 4}" font-size="10" text-anchor="end" style="fill:rgba(var(--tint-rgb),.5);font-family:'JetBrains Mono',monospace">${v}</text>`;
   }
   let cols = '';
   totals.forEach((arr, i) => {
@@ -896,13 +931,13 @@ function viewHistory() {
       col += `<rect x="${x.toFixed(1)}" y="${y2.toFixed(1)}" width="${w.toFixed(1)}" height="${(y1 - y2).toFixed(1)}" fill="${S.stats[j].color}" rx="${Math.min(2, w / 3).toFixed(1)}"/>`;
       acc += v;
     });
-    if (losses[i] < 0) col += `<rect x="${x.toFixed(1)}" y="${yT(0).toFixed(1)}" width="${w.toFixed(1)}" height="${(yT(losses[i]) - yT(0)).toFixed(1)}" fill="#9dff3a" opacity=".75" rx="${Math.min(2, w / 3).toFixed(1)}"/>`;
+    if (losses[i] < 0) col += `<rect x="${x.toFixed(1)}" y="${yT(0).toFixed(1)}" width="${w.toFixed(1)}" height="${(yT(losses[i]) - yT(0)).toFixed(1)}" style="fill:var(--tox)" opacity=".75" rx="${Math.min(2, w / 3).toFixed(1)}"/>`;
     if (col) cols += `<g class="colb" style="animation-delay:${(i * (600 / days.length)).toFixed(0)}ms">${col}</g>`;
     const step = histRange <= 7 ? 1 : histRange <= 30 ? 5 : 15;
     if ((days.length - 1 - i) % step === 0) {
       const d = parseKey(days[i]);
       const lx = x + w / 2, anchor = lx > W - 14 ? 'end' : 'middle';
-      bars += `<text x="${(anchor === 'end' ? W : lx).toFixed(1)}" y="${H - 6}" font-size="10" fill="rgba(255,220,200,.5)" text-anchor="${anchor}" style="font-family:'JetBrains Mono',monospace">${histRange <= 7 ? WD[d.getDay()] : d.getDate() + '.' + pad(d.getMonth() + 1)}</text>`;
+      bars += `<text x="${(anchor === 'end' ? W : lx).toFixed(1)}" y="${H - 6}" font-size="10" text-anchor="${anchor}" style="fill:rgba(var(--tint-rgb),.5);font-family:'JetBrains Mono',monospace">${histRange <= 7 ? WD[d.getDay()] : d.getDate() + '.' + pad(d.getMonth() + 1)}</text>`;
     }
   });
   bars += `<g filter="url(#cglow)">${cols}</g>`;
@@ -968,7 +1003,7 @@ function viewAch() {
         <div class="an">${a.name}</div>
         <div class="ad">${a.desc}</div>
         ${a.ok ? `<div class="ap">✓ ${shortDate(S.ach[a.id] || todayKey())}</div>`
-               : `<div class="ap">${a.v} / ${a.goal}</div>${barHTML('ach-' + a.id, a.v / a.goal, '#ff4a2a')}`}
+               : `<div class="ap">${a.v} / ${a.goal}</div>${barHTML('ach-' + a.id, a.v / a.goal, 'accent')}`}
       </div>`).join('')}</div>`;
   } else {
     const sp = sphereById(achSphere);
@@ -1032,8 +1067,8 @@ function viewAch() {
     <h1>Награды</h1>
     <div class="card sweep">
       <div class="row between"><span class="sn">Открыто</span><span class="bigxp">${got} / ${all.length}</span></div>
-      ${barHTML('ach-all', got / all.length, '#ff4a2a')}
-      ${shameGot ? `<div class="row between" style="margin-top:10px"><span class="sn" style="color:#9dff3a">Позор</span><span class="shamecount">${ico('skull')} ${shameGot}</span></div>` : ''}
+      ${barHTML('ach-all', got / all.length, 'accent')}
+      ${shameGot ? `<div class="row between" style="margin-top:10px"><span class="sn" style="color:var(--tox)">Позор</span><span class="shamecount">${ico('skull')} ${shameGot}</span></div>` : ''}
     </div>
     <div class="spheres">${chips}</div>
     ${body}
@@ -1044,6 +1079,14 @@ function viewSettings() {
   const standalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
   return `
     <h1>Настройки</h1>
+    <h2>Тема оформления</h2>
+    <div class="themes">${THEMES.map((t) => `
+      <button class="theme-card ${(S.settings.theme || 'reactor') === t.id ? 'on' : ''}" data-act="theme" data-id="${t.id}">
+        <span class="sw" style="background:radial-gradient(circle at 35% 30%, ${t.sw[2]}, ${t.sw[0]} 45%, ${t.sw[1]} 70%, ${t.sw[3]} 100%);--glow:${t.sw[0]}66;--ring:${t.sw[1]}"></span>
+        <span class="grow"><span class="tn">${esc(t.name)}</span><span class="td" style="display:block">${esc(t.desc)}</span></span>
+        ${(S.settings.theme || 'reactor') === t.id ? `<span class="ck">${ico('check')}</span>` : ''}
+      </button>`).join('')}</div>
+
     <h2>Персонаж</h2>
     <div class="card">
       <label class="f" style="margin-top:0">Имя</label>
@@ -1067,7 +1110,7 @@ function viewSettings() {
     <div class="card">
       ${S.quests.map((q) => `
         <div class="list-item">
-          <span class="qi" style="color:#ff8a5a">${ico(q.icon)}</span>
+          <span class="qi" style="color:var(--ic)">${ico(q.icon)}</span>
           <div class="grow"><div style="font-weight:600">${esc(q.name)}</div><span class="qr" style="margin-top:3px">${rewardsHTML(q.rewards)}</span></div>
           <button class="btn sm" data-act="edit-quest" data-id="${q.id}">Изменить</button>
         </div>`).join('')}
@@ -1078,7 +1121,7 @@ function viewSettings() {
     <div class="card bad-card">
       ${(S.debuffs || []).map((q) => `
         <div class="list-item">
-          <span class="qi" style="color:#9dff3a">${ico(q.icon)}</span>
+          <span class="qi" style="color:var(--tox)">${ico(q.icon)}</span>
           <div class="grow"><div style="font-weight:600">${esc(q.name)}</div><span class="qr" style="margin-top:3px">${rewardsHTML(q.rewards)}</span></div>
           <button class="btn sm" data-act="edit-quest" data-kind="debuff" data-id="${q.id}">Изменить</button>
         </div>`).join('')}
@@ -1800,7 +1843,7 @@ function aiRender() {
     openSheet(`
       <div class="ai-loading">
         ${reactorHTML('atom', '')}
-        <div class="t">Ядро анализирует день<span class="dots"><i>.</i><i>.</i><i>.</i></span></div>
+        <div class="t">${esc(TT().ai)}<span class="dots"><i>.</i><i>.</i><i>.</i></span></div>
         <div class="small muted">${esc(AI.providerName())}</div>
       </div>`);
     $('#sheet-card .reactor').classList.add('fast');
@@ -1826,9 +1869,9 @@ function aiResultHTML(head) {
       <span class="ck">${ico('check')}</span>
     </button>`;
   const qs = r.quests.map((x) => { const q = S.quests.find((y) => y.id === x.id);
-    return row('q:' + x.id, ico(q.icon), esc(q.name) + (x.count > 1 ? ' ×' + x.count : ''), rewardsHTML(Object.fromEntries(Object.entries(q.rewards).map(([k, v]) => [k, v * x.count]))), '#ff8a5a'); }).join('');
+    return row('q:' + x.id, ico(q.icon), esc(q.name) + (x.count > 1 ? ' ×' + x.count : ''), rewardsHTML(Object.fromEntries(Object.entries(q.rewards).map(([k, v]) => [k, v * x.count]))), 'var(--ic)'); }).join('');
   const bs = (r.debuffs || []).map((x) => { const q = (S.debuffs || []).find((y) => y.id === x.id);
-    return q ? row('b:' + x.id, ico(q.icon), esc(q.name) + (x.count > 1 ? ' ×' + x.count : ''), rewardsHTML(Object.fromEntries(Object.entries(q.rewards).map(([k, v]) => [k, v * x.count]))), '#9dff3a') : ''; }).join('');
+    return q ? row('b:' + x.id, ico(q.icon), esc(q.name) + (x.count > 1 ? ' ×' + x.count : ''), rewardsHTML(Object.fromEntries(Object.entries(q.rewards).map(([k, v]) => [k, v * x.count]))), 'var(--tox)') : ''; }).join('');
   const st = r.stats.map((x) => { const s = statById(x.id);
     return row('s:' + x.id, ico(s.icon), `${esc(s.name)} <b style="color:${s.color}">${sign(x.points)}</b>`, esc(x.reason), s.color); }).join('');
   const cs = r.counters.map((x) => { const c = counterById(x.id);
@@ -1839,7 +1882,7 @@ function aiResultHTML(head) {
     `${esc(sphereById(x.sphere).name)} · ступени ${x.tiers.map((t) => fmtNum(t.goal)).join(' → ')} ${esc(x.unit)}${x.amount ? ` · сегодня +${fmtNum(x.amount)}` : ''}${x.reason ? ' · ' + esc(x.reason) : ''}`, sphereById(x.sphere).color)).join('');
   const nm = (r.newMilestones || []).map((x, i) => row('nm:' + i, ico(x.icon), `Новая веха: ${esc(x.name)}`,
     `${esc(x.desc)}${x.done ? ' · открыть сегодня' : ''}`, 'var(--am)')).join('');
-  const shareRow = (nc || nm) && LEAGUE.joined() ? row('share', ico('users'), 'Поделиться новыми с лигой', 'друзья тоже смогут их получить', '#ff9a5a') : '';
+  const shareRow = (nc || nm) && LEAGUE.joined() ? row('share', ico('users'), 'Поделиться новыми с лигой', 'друзья тоже смогут их получить', 'var(--ic)') : '';
   const empty = !qs && !bs && !st && !cs && !ms && !nc && !nm;
   return `
     <h1>Отчёт разобран</h1>${head}
@@ -1956,11 +1999,11 @@ function aiApply() {
   const x = innerWidth / 2, y = innerHeight * 0.32;
   const items = Object.entries(gained).filter(([id, v]) => v && statById(id)).slice(0, 5);
   const net = items.reduce((a, [, v]) => a + v, 0);
-  if (net < 0) hurt(x, y, items.map(([id, v]) => ({ icon: statById(id).icon, text: sign(v), color: v < 0 ? '#9dff3a' : statById(id).color })));
+  if (net < 0) hurt(x, y, items.map(([id, v]) => ({ icon: statById(id).icon, text: sign(v), color: v < 0 ? 'var(--tox)' : statById(id).color })));
   else {
     SFX.play('quest');
     burst(x, y, 14);
-    floats(x, y, items.map(([id, v]) => ({ icon: statById(id).icon, text: sign(v), color: v < 0 ? '#9dff3a' : statById(id).color })));
+    floats(x, y, items.map(([id, v]) => ({ icon: statById(id).icon, text: sign(v), color: v < 0 ? 'var(--tox)' : statById(id).color })));
   }
   const dt = $('#daytotal'); if (dt) dt.classList.add('bump');
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -2101,7 +2144,7 @@ document.addEventListener('click', (e) => {
       if (card) card.classList.add('hit');
       const dt = $('#daytotal'); if (dt) dt.classList.add('bump');
       hurt(x, y - 20, Object.entries(q.rewards).filter(([sid, v]) => v && statById(sid))
-        .map(([sid, v]) => ({ icon: statById(sid).icon, text: sign(v), color: '#9dff3a' })));
+        .map(([sid, v]) => ({ icon: statById(sid).icon, text: sign(v), color: 'var(--tox)' })));
       break;
     }
     case 'undo-debuff':
@@ -2307,6 +2350,10 @@ ${LEAGUE.invite(c)}`, 'Приглашение скопировано');
         .catch((err) => { st.className = 'small err'; st.textContent = '✕ ' + (err.message || err); SFX.play('error'); });
       break;
     }
+    case 'theme':
+      applyTheme(id, { switching: true });
+      render(true);
+      break;
     case 'sound':
       S.settings.sound = !S.settings.sound;
       SFX.enabled = S.settings.sound;
@@ -2366,9 +2413,41 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
+/* ---------------------- Применение темы ---------------------- */
+
+function applyTheme(id, opts = {}) {
+  const t = themeOf(id), prev = themeOf(S.settings.theme || 'reactor');
+  const root = document.documentElement;
+  root.dataset.theme = t.id;
+  root.dataset.fx = t.fx;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', t.meta);
+  try { localStorage.setItem('lvlup.theme', t.id); } catch (e) { /* ignore */ }
+  // Частицы фона (снег, пылинки, искры)
+  const box = $('#particles');
+  if (box) {
+    let html = '';
+    for (let i = 0; i < t.particles; i++) {
+      const dur = (t.id === 'zen' ? 22 : 9) + Math.random() * 10;
+      html += `<i style="left:${(Math.random() * 100).toFixed(1)}%;top:${(Math.random() * 100).toFixed(1)}%;animation-duration:${dur.toFixed(1)}s;animation-delay:-${(Math.random() * dur).toFixed(1)}s"></i>`;
+    }
+    box.innerHTML = html;
+  }
+  if (opts.switching && prev.id !== t.id) {
+    // Параметры и символ, которые не меняли вручную, перекрашиваем в палитру новой темы.
+    const anyDefault = (sid, color) => THEMES.some((x) => x.stats[sid] === color) || (DEFAULT_STATS.find((d) => d.id === sid) || {}).color === color;
+    for (const st of S.stats) if (t.stats[st.id] && anyDefault(st.id, st.color)) st.color = t.stats[st.id];
+    if (THEMES.some((x) => x.avatar === S.profile.avatar)) S.profile.avatar = t.avatar;
+    S.settings.theme = t.id;
+    save();
+    scheduleSync();
+  }
+}
+
 /* ---------------------- Старт ---------------------- */
 
 $('#tabbar').innerHTML = TABS.map(([k, label, icon]) => `<button data-tab="${k}">${ico(icon)}<span>${label}</span></button>`).join('');
+applyTheme(S.settings.theme || 'reactor');
 SFX.enabled = S.settings.sound;
 checkAchievements(true);
 save();
