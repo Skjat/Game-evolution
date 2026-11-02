@@ -95,7 +95,7 @@ Claude в окне разбора предлагает создать цепоч
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Skjat/Game-evolution/main/server/install.sh | sudo bash
 ```
-Скрипт поставит Docker (если его нет), скачает сервер в `/opt/levelup`, запустит его и Caddy с автоматическим HTTPS.
+Скрипт поставит Docker (если его нет; docker compose не нужен), скачает сервер в `/opt/levelup`, запустит его и Caddy с автоматическим HTTPS.
 Без своего домена используется бесплатный адрес вида `1-2-3-4.sslip.io`; со своим —
 `... | sudo DOMAIN=league.example.ru bash`. Если порты 80/443 заняты (nginx и т.п.), сервер запустится на
 `127.0.0.1:8787`, а скрипт покажет, что добавить в конфиг веб-сервера. В конце выводится адрес для приложения
