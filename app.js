@@ -6,7 +6,8 @@
    ===================================================================== */
 
 const STORAGE_KEY = 'lvlup.v1';
-const APP_VERSION = 22;   // совпадает с номером в sw.js (lvlup-vN)
+const APP_VERSION = 23;
+const COURT_POINTS = 3;   // штраф суда за утверждённый донос / бонус за похвалу — в каждый связанный параметр (до двух)   // совпадает с номером в sw.js (lvlup-vN)
 const QUEST_MAX_REWARD = 5;   // максимум очков подвига в один параметр
 const QUEST_DAY_LIMIT = 3;    // один подвиг — не больше 3 раз за день
 const DATA_VERSION = 5;
@@ -365,6 +366,7 @@ function dayPoints(day, k) {
   if (day) {
     for (const id in day.m) p[id] = (p[id] || 0) + day.m[id];
     for (const x of day.d || []) for (const id in x.r) p[id] = (p[id] || 0) + x.r[id];
+    for (const x of day.court || []) for (const id in x.r) p[id] = (p[id] || 0) + x.r[id];
   }
   if (k) for (const e of brandEvents(k)) for (const id in e.r) p[id] = (p[id] || 0) + e.r[id];
   return p;
@@ -385,6 +387,7 @@ function dayLoss(day, k) {
   let l = 0;
   if (k) for (const e of brandEvents(k)) if (!e.redeem) for (const id in e.r) if (statById(id)) l += Math.min(0, e.r[id]);
   if (day) for (const id in day.m || {}) if (statById(id)) l += Math.min(0, day.m[id]);
+  if (day) for (const x of day.court || []) for (const id in x.r) if (statById(id)) l += Math.min(0, x.r[id]);
   return l;
 }
 // Сколько раз за день поддался слабостям.
@@ -1001,7 +1004,13 @@ function viewDay() {
       <div class="grow"><div style="font-weight:600;font-size:14px">${esc(x.n)}${x.by ? `<span class="tag shamewk">донос · ${esc(x.by)}</span>` : ''}</div><span class="small muted">${Object.entries(x.c || {}).filter(([cid]) => counterById(cid)).map(([cid, v]) => `${esc(counterById(cid).name)} +${fmtNum(v)}`).join(' · ') || 'без последствий'}</span></div>
       <button class="icon-btn" data-act="undo-debuff" data-idx="${i}" aria-label="Отменить">✕</button>
     </div>`).join('');
-  const brands = brandEvents(curDate).map((e) => `
+  const courtRow = (x) => `
+    <div class="done-item ${x.kind === 'praise' ? '' : 'bad'}">
+      <span class="qi">${ico(x.kind === 'praise' ? 'medal' : 'balance')}</span>
+      <div class="grow"><div style="font-weight:600;font-size:14px">${x.kind === 'praise' ? 'Бонус суда' : 'Штраф суда'}<span class="tag ${x.kind === 'praise' ? 'lg' : 'shamewk'}">${x.kind === 'praise' ? 'похвала' : 'донос'} · ${esc(x.by)}</span></div><span class="qr" style="margin-top:3px">${rewardsHTML(x.r)}</span></div>
+    </div>`;
+  const courtGood = (day.court || []).filter((x) => x.kind === 'praise').map(courtRow).join('');
+  const brands = (day.court || []).filter((x) => x.kind !== 'praise').map(courtRow).join('') + brandEvents(curDate).map((e) => `
     <div class="done-item ${e.redeem ? '' : 'bad'}">
       <span class="qi">${ico(e.redeem ? TI().magic : 'skull')}</span>
       <div class="grow"><div style="font-weight:600;font-size:14px">${e.redeem ? 'Искупление' : e.ms ? 'Позорная веха' : 'Клеймо'} «${esc(e.title)}»</div><span class="qr" style="margin-top:3px">${rewardsHTML(e.r)}</span></div>
@@ -1054,7 +1063,7 @@ function viewDay() {
     ${progress ? `<h2>Прогресс достижений</h2><div class="card">${progress}</div>` : ''}
     <h2>Подвиги дня</h2>
     <div class="quests">${quests}</div>
-    ${done ? `<div class="card" style="margin-top:12px">${done}</div>` : ''}
+    ${done || courtGood ? `<div class="card" style="margin-top:12px">${courtGood}${done}</div>` : ''}
     <h2 class="bad-h">Слабости дня</h2>
     <div class="small muted" style="margin:-4px 2px 10px">Честно отметь, где сорвался. Слабость копит позор, а параметры падают, когда набирается новая ступень клейма. 14 чистых дней снимают ступень и возвращают очки.</div>
     <div class="quests">${debuffs}</div>
@@ -1646,6 +1655,23 @@ function courtHTML(b, urgent) {
   return `<h2>Суд лиги${urgent ? ' · нужен твой голос' : ''}</h2>${pend.map(card).join('')}${done.length ? `<details class="court-old"><summary>Решения за последние дни (${done.length})</summary>${done.map(card).join('')}</details>` : ''}`;
 }
 
+// Штраф или бонус суда: по параметрам, которые затрагивает отчёт (не больше двух самых затронутых).
+function courtPoints(p) {
+  const d = p.data || {}, w = {};
+  const add = (id, v) => { if (statById(id) && v > 0) w[id] = (w[id] || 0) + v; };
+  if (p.kind === 'praise') {
+    (d.q || []).forEach((x) => { const q = S.quests.find((y) => y.id === x.id) || { rewards: x.r || {} }; for (const id in q.rewards || {}) add(id, q.rewards[id] * (x.k || 1)); });
+    (d.s || []).forEach((x) => add(x.id, x.p));
+  } else {
+    (d.b || []).forEach((x) => { const q = (S.debuffs || []).find((y) => y.id === x.id) || { rewards: x.r || {} }; for (const id in q.rewards || {}) add(id, -q.rewards[id] * (x.k || 1)); });
+    (d.c || []).forEach((x) => { if (isShame(counterById(x.id))) { const bw = brandWeights(x.id); for (const id in bw) add(id, bw[id]); } });
+    (d.m || []).forEach((x) => (SHAME_MS_STATS[x.id] || []).forEach((id) => add(id, 1)));
+  }
+  let ids = Object.entries(w).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([id]) => id);
+  if (!ids.length) ids = [p.kind === 'praise' ? (statById('cha') ? 'cha' : S.stats[0] && S.stats[0].id) : fallbackStat()].filter(Boolean);
+  return Object.fromEntries(ids.map((id) => [id, p.kind === 'praise' ? COURT_POINTS : -COURT_POINTS]));
+}
+
 // Утверждённые лигой отчёты обо мне — добавляем в нужный день.
 let applyingVerdicts = false;
 function applyVerdicts(board) {
@@ -1670,6 +1696,7 @@ function applyVerdicts(board) {
         (d.c || []).forEach((x) => { if (counterById(x.id) && x.a > 0) day.c[x.id] = round1((day.c[x.id] || 0) + Math.min(1000, x.a)); });
         const unlocked = milestoneDates();
         (d.m || []).forEach((x) => { if (milestoneById(x.id) && !unlocked[x.id] && !day.ms.includes(x.id)) day.ms.push(x.id); });
+        (day.court = day.court || []).push({ pid: p.id, kind: p.kind, by, r: courtPoints(p) });
         const line = `⚖ Решение лиги — ${p.kind === 'praise' ? 'похвала' : 'донос'}, автор ${by}: ${d.note || p.summary}`;
         day.note = day.note && day.note.trim() ? day.note.trim() + '\n' + line : line;
         S.courtDone.push(p.id);
@@ -2167,8 +2194,8 @@ function aiRender() {
     openSheet(`
       <h1>${rp.kind === 'praise' ? 'Похвала' : 'Донос'}: ${esc(rp.name)}</h1>${head}
       <div class="small muted" style="margin-bottom:10px">${rp.kind === 'praise'
-        ? 'Расскажи, чем отличился товарищ. ИИ превратит рассказ в отчёт за день, лига проголосует — и при большинстве «за» подвиги добавятся в его день.'
-        : 'Расскажи, где товарищ сорвался. ИИ составит отчёт, лига проголосует — и при большинстве «за» слабости запишутся в его день.'}</div>
+        ? `Расскажи, чем отличился товарищ. ИИ превратит рассказ в отчёт за день, лига проголосует — и при большинстве «за» подвиги добавятся в его день, плюс бонус суда +${COURT_POINTS}.`
+        : `Расскажи, где товарищ сорвался. ИИ составит отчёт, лига проголосует — и при большинстве «за» слабости запишутся в его день, а штраф суда сразу снимет −${COURT_POINTS}.`}</div>
       <div class="seg">${[[t, 'Сегодня'], [addDays(t, -1), 'Вчера'], [addDays(t, -2), 'Позавчера']].map(([k, l]) => `<button data-act="rp-day" data-k="${k}" class="${rp.day === k ? 'active' : ''}">${l}</button>`).join('')}</div>
       <textarea id="ai-text" style="min-height:140px;margin-top:12px" placeholder="${rp.kind === 'praise' ? 'Например: сегодня утром пробежал с нами 10 км и ещё помог другу с переездом' : 'Например: вечером при мне съел два бургера и выпил три энергетика'}">${esc(ai.text)}</textarea>
       <div class="row" style="margin-top:10px">
@@ -2249,7 +2276,7 @@ function aiResultHTML(head) {
     ${!qs && !bs && !st && !cs && !ms ? '<div class="empty">ИИ не нашёл, что записать. Расскажи конкретнее: что именно и когда.</div>' : ''}
     <h2>Запись в дневник</h2>
     <textarea id="ai-note">${esc(r.note)}</textarea>
-    <div class="small muted" style="margin-top:8px">Отчёт увидят все участники лиги и ${esc(rp.name)}. Решение — большинством голосов. На голосование 3 суток: если большинство не набралось, решают текущие голоса, при равенстве — оправдан.</div>
+    <div class="small muted" style="margin-top:8px">Отчёт увидят все участники лиги и ${esc(rp.name)}. Решение — большинством голосов. На голосование 3 суток: если большинство не набралось, решают текущие голоса, при равенстве — оправдан. ${rp.kind === 'praise' ? `Утверждённая похвала даёт бонус +${COURT_POINTS}` : `Утверждённый донос сразу снимает −${COURT_POINTS}`} в связанные параметры.</div>
     <div class="row" style="margin-top:16px">
       <button class="btn grow" data-act="ai-back">Изменить</button>
       <button class="btn primary grow" data-act="rp-send" ${!qs && !bs && !st && !cs && !ms ? 'disabled' : ''}>${ico('balance')} Отправить</button>
