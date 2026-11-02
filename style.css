@@ -515,6 +515,12 @@ h2.bad-h::before, h2.bad-h::after { background: linear-gradient(90deg, transpare
 .shame-intro > svg.i { width: 36px; height: 36px; color: var(--tox); filter: drop-shadow(0 0 8px var(--tox)); }
 .shamecount { display: inline-flex; align-items: center; gap: 6px; font: 900 18px var(--head); color: var(--tox); text-shadow: 0 0 10px rgba(157, 255, 58, .6); }
 .shamecount svg.i { width: 18px; height: 18px; }
+.redeem { margin-top: 12px; padding-top: 10px; border-top: 1px dashed rgba(93, 255, 176, .25); font: 600 12px var(--body); color: #9dffd0; }
+.redeem svg.i { width: 14px; height: 14px; vertical-align: -2px; color: #5dffb0; }
+.redeem b { font: 700 12px var(--mono); color: #5dffb0; }
+.redeem .bar { height: 4px; }
+.card > .redeem:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.redeem.ok { display: flex; align-items: center; gap: 6px; color: #5dffb0; }
 
 /* Удар: красно-ядовитая вспышка по краям и тряска */
 body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 44; opacity: 0;

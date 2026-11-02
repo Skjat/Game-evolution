@@ -223,8 +223,10 @@ function load() {
   }
 }
 
+let counterCache = null;   // кэш расчёта счётчиков и искупления, сбрасывается при сохранении
 let S = load();
 function save() {
+  counterCache = null;
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(S)); }
   catch (e) { toast('Не удалось сохранить данные', '', 'bolt'); }
 }
@@ -294,12 +296,46 @@ function dayCounters(day) {
   for (const id in c) c[id] = round1(c[id]);
   return c;
 }
-function counterTotals() {
-  const t = {};
-  for (const k in S.log) { const c = dayCounters(S.log[k]); for (const id in c) t[id] = (t[id] || 0) + c[id]; }
-  for (const id in t) t[id] = Math.max(0, round1(t[id]));
-  return t;
+/* Искупление: каждые REDEEM_DAYS «чистых» дней без слабости снимают одну ступень позорного клейма.
+   Чистым считается только день, когда игрок что-то отметил (иначе позор смывался бы забрасыванием приложения).
+   Пропущенные дни не засчитываются, но и не обнуляют отсчёт. Срыв обнуляет отсчёт. */
+const REDEEM_DAYS = 14;
+function isLogged(day) { return !!day && (isActive(day) || (day.b || []).length > 0 || Object.keys(day.c || {}).length > 0 || !!(day.note || '').trim()); }
+
+function computeCounters() {
+  const key = todayKey();
+  if (counterCache && counterCache.key === key) return counterCache;
+  const raw = {}, shame = {};
+  const shameList = counterList(S).filter(isShame);
+  shameList.forEach((c) => { shame[c.id] = { value: 0, clean: 0, redeemed: 0 }; });
+  for (const k of Object.keys(S.log).sort()) {
+    if (k > key) continue;
+    const day = S.log[k];
+    const c = dayCounters(day);
+    for (const id in c) raw[id] = (raw[id] || 0) + c[id];
+    const logged = isLogged(day);
+    for (const sc of shameList) {
+      const st = shame[sc.id], inc = c[sc.id] || 0;
+      if (inc) { st.value = Math.max(0, round1(st.value + inc)); if (inc > 0) st.clean = 0; continue; }
+      if (!logged) continue;                       // незаполненный день не засчитывается и не обнуляет
+      if (st.value <= 0) { st.clean = 0; continue; }
+      if (++st.clean >= REDEEM_DAYS) {
+        let i = -1;
+        sc.tiers.forEach((t, j) => { if (st.value >= t.goal) i = j; });
+        st.value = i > 0 ? sc.tiers[i - 1].goal : 0;   // откат к порогу предыдущей ступени
+        st.redeemed++;
+        st.clean = 0;
+      }
+    }
+  }
+  for (const id in raw) raw[id] = Math.max(0, round1(raw[id]));
+  const totals = { ...raw };
+  shameList.forEach((c) => { totals[c.id] = shame[c.id].value; });
+  counterCache = { key, totals, raw, shame };
+  return counterCache;
 }
+function counterTotals() { return computeCounters().totals; }
+const shameInfo = (id) => computeCounters().shame[id] || { value: 0, clean: 0, redeemed: 0 };
 // Вехи: id -> дата, когда открыта (самая ранняя).
 function milestoneDates() {
   const m = {};
@@ -410,10 +446,18 @@ function allAchievements() {
 }
 
 function checkAchievements(silent) {
-  const fresh = [];
+  const fresh = [], cleared = [];
   for (const a of allAchievements()) {
     if (a.ok && !S.ach[a.id]) { S.ach[a.id] = a.date || todayKey(); fresh.push(a); }
-    else if (!a.ok && S.ach[a.id]) delete S.ach[a.id];   // отменили запись — награда снова закрыта
+    else if (!a.ok && S.ach[a.id]) {   // отменили запись или искупили позор — награда снова закрыта
+      delete S.ach[a.id];
+      if (a.kind === 'shame') cleared.push(a);
+    }
+  }
+  if (!silent && cleared.length) {
+    const top = cleared.reduce((m, a) => (a.goal > m.goal ? a : m), cleared[0]);
+    toast(`Искупление: клеймо «${top.name}» снято`, 'gold', 'sparkle');
+    SFX.play('achieve');
   }
   if (silent || !fresh.length) return;
   const good = fresh.filter((a) => a.kind !== 'shame'), bad = fresh.filter((a) => a.kind === 'shame');
@@ -910,6 +954,7 @@ function viewAch() {
           <button class="icon-btn" data-act="counter" data-id="${c.id}" aria-label="Добавить">+</button>
         </div>
         ${barHTML('ch-' + c.id, next ? v / next.goal : 1, sp.color)}
+        ${isShame(c) ? redeemHTML(c) : ''}
         <div class="tiers">${c.tiers.map((t, i) => {
           const r = rarityOf(c, i);
           return `<button class="tier ${v >= t.goal ? 'on' : ''}" style="--r:${r.color}" data-act="tier" data-id="${c.id}" data-i="${i}">
@@ -926,7 +971,7 @@ function viewAch() {
         <div class="ap">${md[m.id] ? '✓ ' + shortDate(md[m.id]) : 'не открыто'}${m.custom ? ' · своё' : ''}</div>
       </button>`).join('');
     body = achSphere === 'shame' ? `
-      <div class="card shame-intro">${ico('skull')}<div><b>Коллекция позора: ${shameGot}</b><div class="small muted">Эти клейма ты получаешь за слабости. Не собирай их.</div></div></div>
+      <div class="card shame-intro">${ico('skull')}<div><b>Коллекция позора: ${shameGot}</b><div class="small muted">Клейма даются за слабости. Искупление: ${REDEEM_DAYS} дней без слабости (в дни, когда отмечаешь итоги) снимают одну ступень. Срыв обнуляет отсчёт.</div></div></div>
       <h2 class="bad-h">Клейма</h2>${chains}
       <button class="btn block add-own" data-act="add-cc">${ico('sparkle')} Своя цепочка позора</button>` : `<h2>Цепочки</h2>${chains}
       <button class="btn block add-own" data-act="add-cc">${ico('sparkle')} Своя цепочка</button>
@@ -1123,7 +1168,8 @@ function counterSheet(id) {
       <div class="kpi"><b>${fmtNum(total)}</b><span>всего, ${c.unit}</span></div>
       <div class="kpi"><b>${fmtNum(today)}</b><span>сегодня</span></div>
     </div>
-    <div class="small muted" style="margin:12px 2px">${next ? `До ступени «${esc(next.title)}»: ${fmtNum(round1(next.goal - total))} ${c.unit}` : 'Все ступени этой цепочки пройдены!'}</div>
+    ${isShame(c) ? `<div class="card" style="margin-top:12px">${redeemHTML(c)}${shameInfo(id).redeemed ? `<div class="small muted" style="margin-top:6px">Уже снято ступеней: ${shameInfo(id).redeemed}</div>` : ''}</div>`
+      : `<div class="small muted" style="margin:12px 2px">${next ? `До ступени «${esc(next.title)}»: ${fmtNum(round1(next.goal - total))} ${c.unit}` : 'Все ступени этой цепочки пройдены!'}</div>`}
     <label class="f">Добавить за сегодня</label>
     <div class="row qty">
       ${(big ? [1, 5, 10] : [1, 2, 5]).map((n) => `<button class="btn grow" data-act="counter-add" data-id="${id}" data-n="${n}">+${n}</button>`).join('')}
@@ -1161,6 +1207,22 @@ function milestoneSheet(id) {
              : `<button class="btn primary grow" data-act="ms-done" data-id="${id}">${ico('check')} Выполнено сегодня</button>`}
     </div>
   `);
+}
+
+// Полоска искупления для цепочки позора.
+function redeemHTML(c) {
+  const st = shameInfo(c.id);
+  if (st.value <= 0) {
+    const had = (computeCounters().raw[c.id] || 0) > 0;
+    return `<div class="redeem ok">${ico('sparkle')}<span>${had ? 'Клеймо снято. Так держать!' : 'Чисто. Не начинай.'}</span></div>`;
+  }
+  const cur = [...c.tiers].reverse().find((t) => st.value >= t.goal);
+  const left = REDEEM_DAYS - st.clean;
+  return `<div class="redeem">
+    <div class="row between"><span>${ico('sparkle')} Искупление${cur ? ` «${esc(cur.title)}»` : ''}</span><b>${st.clean}/${REDEEM_DAYS} дн.</b></div>
+    ${barHTML('rd-' + c.id, st.clean / REDEEM_DAYS, '#5dffb0')}
+    <div class="sx">${left === 1 ? 'Ещё 1 чистый день' : `Ещё ${left} чистых ${plural(left, 'день', 'дня', 'дней')}`} — и ступень снимется</div>
+  </div>`;
 }
 
 /* ---------------------- Свои достижения (редакторы) ---------------------- */
