@@ -6,7 +6,7 @@
    ===================================================================== */
 
 const STORAGE_KEY = 'lvlup.v1';
-const APP_VERSION = 21;   // совпадает с номером в sw.js (lvlup-vN)
+const APP_VERSION = 22;   // совпадает с номером в sw.js (lvlup-vN)
 const QUEST_MAX_REWARD = 5;   // максимум очков подвига в один параметр
 const QUEST_DAY_LIMIT = 3;    // один подвиг — не больше 3 раз за день
 const DATA_VERSION = 5;
@@ -1592,7 +1592,24 @@ function verdictItems(d) {
   ].join('');
 }
 
-const VERDICT_STATUS = { approved: 'утверждено лигой', rejected: 'отклонено', expired: 'истекло', withdrawn: 'отозвано автором' };
+const VERDICT_STATUS = { approved: 'утверждено лигой', rejected: 'отклонено', expired: 'закрыто: участник покинул лигу', withdrawn: 'отозвано автором' };
+// Итог голосования: по большинству или по истечении 3 суток (тогда по текущим голосам, при равенстве — оправдан).
+function verdictLabel(p) {
+  const timeout = p.deadline && p.resolved_at && p.resolved_at >= p.deadline;
+  const praise = p.kind === 'praise';
+  if (p.status === 'approved') return timeout ? 'время вышло · утверждено по голосам' : 'утверждено лигой';
+  if (p.status === 'rejected') return (timeout ? 'время вышло · ' : '') + (praise ? 'не утверждено' : 'оправдан');
+  return VERDICT_STATUS[p.status] || p.status;
+}
+// Сколько осталось до конца голосования (по часам сервера).
+function timeLeft(p, b) {
+  if (!p.deadline) return '';
+  const skew = (b.serverTime || 0) - (LEAGUE.cfg().lastSync || Date.now());
+  const ms = p.deadline - (Date.now() + skew);
+  if (ms <= 0) return 'время вышло — итог при следующем обновлении';
+  const h = Math.floor(ms / 36e5), m = Math.floor((ms % 36e5) / 6e4);
+  return 'осталось ' + (h >= 24 ? `${Math.floor(h / 24)} д ${h % 24} ч` : h ? `${h} ч ${m} мин` : `${m} мин`);
+}
 function courtHTML(b, urgent) {
   const list = (b.proposals || []).filter((p) => p.status === 'pending' || Date.now() - (p.resolved_at || p.created_at) < 3 * 864e5);
   if (!list.length) return `<h2>Суд лиги</h2><div class="card small muted">Открытых голосований нет. Чтобы донести или похвалить, нажми на участника в таблице.</div>`;
@@ -1610,7 +1627,7 @@ function courtHTML(b, urgent) {
       <details class="ctext"><summary>Что рассказал ${esc(p.authorName)}</summary><div>«${esc(p.text)}»</div></details>
       <div class="cvotes">
         <span class="ok">за ${p.yes}</span><span class="err">против ${p.no}</span>
-        <span class="muted">${pending ? `нужно ${p.need} из ${p.voters}` : VERDICT_STATUS[p.status] || p.status}</span>
+        <span class="muted">${pending ? `нужно ${p.need} из ${p.voters} · ${timeLeft(p, b)}` : verdictLabel(p)}</span>
       </div>
       ${p.eligible ? `<div class="cvoters">${p.eligible.map((id) => {
         const v = (p.votes || []).find((x) => x.m === id), mem = (b.members || []).find((x) => x.id === id);
@@ -2232,7 +2249,7 @@ function aiResultHTML(head) {
     ${!qs && !bs && !st && !cs && !ms ? '<div class="empty">ИИ не нашёл, что записать. Расскажи конкретнее: что именно и когда.</div>' : ''}
     <h2>Запись в дневник</h2>
     <textarea id="ai-note">${esc(r.note)}</textarea>
-    <div class="small muted" style="margin-top:8px">Отчёт увидят все участники лиги и ${esc(rp.name)}. Решение — большинством голосов, голосование идёт неделю.</div>
+    <div class="small muted" style="margin-top:8px">Отчёт увидят все участники лиги и ${esc(rp.name)}. Решение — большинством голосов. На голосование 3 суток: если большинство не набралось, решают текущие голоса, при равенстве — оправдан.</div>
     <div class="row" style="margin-top:16px">
       <button class="btn grow" data-act="ai-back">Изменить</button>
       <button class="btn primary grow" data-act="rp-send" ${!qs && !bs && !st && !cs && !ms ? 'disabled' : ''}>${ico('balance')} Отправить</button>

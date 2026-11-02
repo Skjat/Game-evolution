@@ -26,7 +26,7 @@ const now = () => Date.now();
 const MAX_MEMBERS = 50;
 const MAX_ITEMS = 150;
 const REACTIONS = ['respect', 'lol'];
-const PROPOSAL_TTL = 7 * 864e5;      // голосование длится неделю
+const PROPOSAL_TTL = 3 * 864e5;      // голосование длится 3 суток, потом решение по текущим голосам
 const MAX_PENDING = 5;               // открытых доносов/похвал от одного автора
 
 async function sha256(s) {
@@ -88,18 +88,22 @@ async function resolve(env, p) {
   if (p.status !== 'pending') return p;
   const { ids, el } = await voters(env, p.league, p.target);
   let status = 'pending';
-  if (!ids.includes(p.target) || now() - p.created_at > PROPOSAL_TTL) status = 'expired';
+  if (!ids.includes(p.target)) status = 'expired';
   else {
     const vs = (await env.DB.prepare('SELECT member, vote FROM votes WHERE proposal = ?').bind(p.id).all()).results.filter((v) => el.includes(v.member));
     const yes = vs.filter((v) => v.vote > 0).length, no = vs.filter((v) => v.vote < 0).length;
     const need = Math.floor(el.length / 2) + 1;
     if (yes >= need) status = 'approved';
     else if (no > el.length - need) status = 'rejected';
+    // Время вышло: решаем по текущим голосам, при равенстве — в пользу того, о ком отчёт.
+    else if (now() - p.created_at >= PROPOSAL_TTL) status = yes > no ? 'approved' : 'rejected';
   }
   if (status === 'pending') return p;
   await env.DB.prepare('UPDATE proposals SET status = ?, resolved_at = ? WHERE id = ? AND status = ?').bind(status, now(), p.id, 'pending').run();
   if (status === 'approved') {
     await addEvents(env, p.league, p.target, [{ kind: 'verdict', text: `по решению лиги (${p.kind === 'praise' ? 'похвала' : 'донос'}): ${p.summary}`, icon: p.kind === 'praise' ? 'medal' : 'balance' }]);
+  } else if (status === 'rejected' && p.kind === 'complaint') {
+    await addEvents(env, p.league, p.target, [{ kind: 'verdict', text: `оправдан судом лиги: ${p.summary}`, icon: 'balance' }]);
   }
   return { ...p, status, resolved_at: now() };
 }
@@ -124,7 +128,7 @@ async function proposalsFor(env, me) {
       id: p.id, author: p.author, authorName: p.authorName || 'бывший участник', authorAvatar: p.authorAvatar,
       target: p.target, targetName: p.targetName || 'бывший участник', targetAvatar: p.targetAvatar,
       day: p.day, kind: p.kind, text: p.text, summary: p.summary, data: JSON.parse(p.data || '{}'),
-      status: p.status, applied: !!p.applied, created_at: p.created_at, resolved_at: p.resolved_at,
+      status: p.status, applied: !!p.applied, created_at: p.created_at, resolved_at: p.resolved_at, deadline: p.created_at + PROPOSAL_TTL,
       yes: pv.filter((v) => v.vote > 0).length, no: pv.filter((v) => v.vote < 0).length,
       voters: el.length, need: Math.floor(el.length / 2) + 1, myVote: mine ? mine.vote : 0, canVote: el.includes(me.id),
       eligible: el, votes: pv.map((v) => ({ m: v.member, v: v.vote })),
@@ -134,6 +138,8 @@ async function proposalsFor(env, me) {
 }
 
 async function board(env, me) {
+  // Сначала суд: закрытие голосований добавляет события в ленту.
+  const proposals = await proposalsFor(env, me);
   const league = await env.DB.prepare('SELECT code, name, created_at FROM leagues WHERE code = ?').bind(me.league).first();
   const members = (await env.DB.prepare('SELECT id, name, avatar, profile, updated_at, joined_at FROM members WHERE league = ? ORDER BY joined_at')
     .bind(me.league).all()).results.map((m) => ({ ...m, profile: JSON.parse(m.profile || '{}') }));
@@ -152,7 +158,6 @@ async function board(env, me) {
   const items = (await env.DB.prepare(
     'SELECT i.id, i.author, i.kind, i.data, i.created_at, m.name AS authorName FROM items i LEFT JOIN members m ON m.id = i.author WHERE i.league = ? ORDER BY i.created_at',
   ).bind(me.league).all()).results.map((i) => ({ ...i, data: JSON.parse(i.data || '{}') }));
-  const proposals = await proposalsFor(env, me);
   // Основатель — самый давний участник (создатель лиги; если он ушёл — следующий по стажу).
   const owner = members.length ? members[0].id : null;
   return { league, me: me.id, owner, members, feed, items, proposals, serverTime: now() };
