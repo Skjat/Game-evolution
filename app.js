@@ -1892,8 +1892,8 @@ function aiRender() {
       <h1>Отчёт за день</h1>${head}
       <textarea id="ai-text" style="min-height:150px" placeholder="Например: утром пробежал 6 км, потом 3 часа глубокой работы над проектом, вечером дочитал «Дюну» и познакомился с новым соседом.">${esc(ai.text)}</textarea>
       <div class="row" style="margin-top:10px">
-        ${SR ? `<button class="icon-btn mic ${rec ? 'rec' : ''}" data-act="ai-mic" aria-label="Диктовка">${ico('mic')}</button>` : ''}
-        <span class="small muted grow" id="ai-mic-hint">${SR ? (rec ? 'Слушаю… нажми ещё раз, чтобы остановить' : 'Нажми на микрофон и говори') : 'Для голосового ввода нажми микрофон на клавиатуре iPhone'}</span>
+        ${SR ? `<button class="icon-btn mic ${micOn ? 'rec' : ''}" data-act="ai-mic" aria-label="Диктовка">${ico('mic')}</button>` : ''}
+        <span class="small muted grow" id="ai-mic-hint">${SR ? (micOn ? 'Слушаю… нажми ещё раз, чтобы остановить' : 'Нажми на микрофон и говори') : 'Для голосового ввода нажми микрофон на клавиатуре'}</span>
       </div>
       <div class="row" style="margin-top:16px">
         <button class="btn grow" data-act="close-sheet">Отмена</button>
@@ -2070,34 +2070,76 @@ function aiApply() {
 }
 
 // Голосовой ввод (Web Speech API), если браузер его поддерживает.
+// Chrome на Android в непрерывном режиме присылает фразы накопительно («я», «я пошёл», «я пошёл в зал»),
+// из-за чего слова задваивались. Поэтому на Android слушаем по одной фразе и перезапускаемся,
+// а куски склеиваем с удалением повторов на стыке.
+const IS_ANDROID = /Android/i.test(navigator.userAgent);
+function mergeSpeech(acc, piece) {
+  piece = String(piece || '').trim();
+  acc = String(acc || '').trim();
+  if (!piece) return acc;
+  if (!acc) return piece;
+  const a = acc.split(/\s+/), b = piece.split(/\s+/);
+  const norm = (w) => w.toLowerCase().replace(/[.,!?;:«»"()…-]/g, '');
+  for (let k = Math.min(a.length, b.length); k > 0; k--) {
+    if (k < 2 && k !== a.length && k !== b.length) break; // одно совпавшее слово на стыке — не повтор
+    let ok = true;
+    for (let j = 0; j < k; j++) if (norm(a[a.length - k + j]) !== norm(b[j])) { ok = false; break; }
+    if (ok) return a.concat(b.slice(k)).join(' ');
+  }
+  return acc + ' ' + piece;
+}
+let micOn = false, micText = '', micSilent = 0;
 function micToggle() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) return;
-  if (rec) { micStop(); return; }
+  if (micOn) { micStop(); return; }
   const ta = $('#ai-text');
-  const base = ta && ta.value.trim() ? ta.value.trim() + ' ' : '';
-  try {
-    rec = new SR();
-    rec.lang = 'ru-RU';
-    rec.continuous = true;
-    rec.interimResults = true;
-    rec.onresult = (e) => {
-      let t = '';
-      for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
-      ai.text = base + t;
-      const el = $('#ai-text'); if (el) el.value = ai.text;
-    };
-    rec.onerror = (e) => {
-      const h = $('#ai-mic-hint');
-      if (h) h.textContent = e.error === 'not-allowed' ? 'Нет доступа к микрофону — разреши его в настройках Safari' : 'Диктовка недоступна, используй микрофон на клавиатуре';
-    };
-    rec.onend = () => { rec = null; const b = $('[data-act=ai-mic]'); if (b) b.classList.remove('rec'); };
-    rec.start();
-    const b = $('[data-act=ai-mic]'); if (b) b.classList.add('rec');
-    const h = $('#ai-mic-hint'); if (h) h.textContent = 'Слушаю… нажми ещё раз, чтобы остановить';
-  } catch (e) { rec = null; }
+  micText = ta ? ta.value.trim() : '';
+  micOn = true; micSilent = 0;
+  const show = (t) => { ai.text = t; const el = $('#ai-text'); if (el) el.value = t; };
+  const startSession = () => {
+    let session = '';
+    try {
+      rec = new SR();
+      rec.lang = 'ru-RU';
+      rec.continuous = !IS_ANDROID;
+      rec.interimResults = true;
+      rec.onresult = (e) => {
+        let t = '';
+        for (let i = 0; i < e.results.length; i++) t = mergeSpeech(t, e.results[i][0].transcript);
+        session = t; micSilent = 0;
+        show(mergeSpeech(micText, session));
+      };
+      rec.onerror = (e) => {
+        if (e.error === 'aborted') return;
+        if (e.error === 'no-speech') { if (++micSilent >= 2) micStop(); return; } // долго тишина — выключаемся
+        micOn = false;
+        const h = $('#ai-mic-hint');
+        if (h) h.textContent = e.error === 'not-allowed' ? 'Нет доступа к микрофону — разреши его в настройках браузера' : 'Диктовка недоступна, используй микрофон на клавиатуре';
+      };
+      rec.onend = () => {
+        micText = mergeSpeech(micText, session);
+        show(micText);
+        rec = null;
+        if (micOn) { startSession(); return; } // Android: следующая фраза
+        const b = $('[data-act=ai-mic]'); if (b) b.classList.remove('rec');
+      };
+      rec.start();
+    } catch (e) {
+      rec = null; micOn = false;
+      const b = $('[data-act=ai-mic]'); if (b) b.classList.remove('rec');
+    }
+  };
+  startSession();
+  const b = $('[data-act=ai-mic]'); if (b) b.classList.add('rec');
+  const h = $('#ai-mic-hint'); if (h) h.textContent = 'Слушаю… нажми ещё раз, чтобы остановить';
 }
-function micStop() { if (rec) { try { rec.stop(); } catch (e) { /* ignore */ } rec = null; } }
+function micStop() {
+  micOn = false;
+  if (rec) { try { rec.stop(); } catch (e) { /* ignore */ } }
+  const b = $('[data-act=ai-mic]'); if (b) b.classList.remove('rec');
+}
 
 /* ---------------------- Экспорт / импорт ---------------------- */
 
