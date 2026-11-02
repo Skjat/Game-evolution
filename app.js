@@ -6,7 +6,7 @@
    ===================================================================== */
 
 const STORAGE_KEY = 'lvlup.v1';
-const APP_VERSION = 23;
+const APP_VERSION = 24;
 const COURT_POINTS = 3;   // штраф суда за утверждённый донос / бонус за похвалу — в каждый связанный параметр (до двух)   // совпадает с номером в sw.js (lvlup-vN)
 const QUEST_MAX_REWARD = 5;   // максимум очков подвига в один параметр
 const QUEST_DAY_LIMIT = 3;    // один подвиг — не больше 3 раз за день
@@ -273,6 +273,7 @@ function defaultState() {
     custom: { counters: [], milestones: [] },   // свои достижения игрока
     shared: { counters: [], milestones: [] },   // общие достижения лиги (приходят с сервера)
     courtDone: [],                              // id решений суда лиги, уже добавленных в дни
+    courtSeen: [],                              // id моих доносов, итог которых уже засчитан в «Поборника» / «Ябеду»
     created: todayKey(),
   };
 }
@@ -310,6 +311,7 @@ function migrate(s) {
   s.custom = Object.assign({ counters: [], milestones: [] }, s.custom || {});
   s.shared = Object.assign({ counters: [], milestones: [] }, s.shared || {});
   if (!Array.isArray(s.courtDone)) s.courtDone = [];
+  if (!Array.isArray(s.courtSeen)) s.courtSeen = [];
   for (const q of s.quests || []) for (const k in q.rewards || {}) q.rewards[k] = Math.max(-QUEST_MAX_REWARD, Math.min(QUEST_MAX_REWARD, Number(q.rewards[k]) || 0));
   s.v = DATA_VERSION;
   return s;
@@ -404,6 +406,7 @@ function dayCounters(day) {
   const c = {};
   if (!day) return c;
   for (const id in day.c || {}) c[id] = (c[id] || 0) + day.c[id];
+  for (const id in day.cc || {}) c[id] = (c[id] || 0) + day.cc[id];   // счётчики суда лиги
   for (const x of day.d || []) for (const id in x.c || {}) c[id] = (c[id] || 0) + x.c[id];
   for (const x of day.b || []) for (const id in x.c || {}) c[id] = (c[id] || 0) + x.c[id];
   for (const id in c) c[id] = round1(c[id]);
@@ -427,8 +430,10 @@ const SHAME_MS_STATS = {
 const brandPenalty = (tier) => BRAND_PENALTY[Math.min(tier, BRAND_PENALTY.length - 1)];
 const fallbackStat = () => (statById('wis') ? 'wis' : S.stats[0] && S.stats[0].id);
 // Какие параметры страдают от цепочки позора: по слабостям, которые её пополняют.
+const COUNTER_STATS = { court_rat: { cha: 2, wis: 1 } };   // цепочки позора без слабостей: по каким параметрам бьют клейма
 function brandWeights(cid) {
   const w = {};
+  if (COUNTER_STATS[cid]) { for (const id in COUNTER_STATS[cid]) if (statById(id)) w[id] = COUNTER_STATS[cid][id]; if (Object.keys(w).length) return w; }
   const seen = new Set();
   for (const q of [...(S.debuffs || []), ...DEFAULT_DEBUFFS]) {
     if (seen.has(q.id) || !(q.c && q.c[cid] > 0)) continue;
@@ -1029,7 +1034,7 @@ function viewDay() {
     ...Object.entries(dc).filter(([id, v]) => v && counterById(id)).map(([id, v]) => {
       const c = counterById(id), manual = (day.c || {})[id] || 0;
       return `<div class="prog-item"><div class="sico" style="color:${sphereById(c.sphere).color}">${ico(c.icon)}</div>
-        <div class="grow"><div class="sn">${esc(c.name)}</div><div class="sx">+${fmtNum(v)} ${c.unit}${manual !== v ? ' · из подвигов ' + fmtNum(round1(v - manual)) : ''}</div></div>
+        <div class="grow"><div class="sn">${esc(c.name)}</div><div class="sx">+${fmtNum(v)} ${c.unit}${c.auto ? ' · суд лиги' : manual !== v ? ' · из подвигов ' + fmtNum(round1(v - manual)) : ''}</div></div>
         ${manual ? `<button class="icon-btn" data-act="rm-counter" data-id="${id}" aria-label="Убрать">✕</button>` : ''}</div>`;
     }),
     ...(day.ms || []).filter(milestoneById).map((id) => {
@@ -1188,7 +1193,7 @@ function viewAch() {
           <div class="sico" style="color:${sp.color}">${ico(c.icon)}</div>
           <div class="grow"><div class="sn">${esc(c.name)}${c.custom ? '<span class="tag">своё</span>' : ''}${c.shared ? `<span class="tag lg">лига${c.authorName ? ' · ' + esc(c.authorName) : ''}</span>` : ''}</div>
             <div class="sx"><b class="cv">${fmtNum(v)}</b> ${c.unit}${next ? ` · далее «${esc(next.title)}» на ${fmtNum(next.goal)}` : ' · все ступени пройдены'}</div></div>
-          <button class="icon-btn" data-act="counter" data-id="${c.id}" aria-label="Добавить">+</button>
+          ${c.auto ? '' : `<button class="icon-btn" data-act="counter" data-id="${c.id}" aria-label="Добавить">+</button>`}
         </div>
         ${barHTML('ch-' + c.id, next ? v / next.goal : 1, sp.color)}
         ${isShame(c) ? redeemHTML(c) : ''}
@@ -1672,10 +1677,29 @@ function courtPoints(p) {
   return Object.fromEntries(ids.map((id) => [id, p.kind === 'praise' ? COURT_POINTS : -COURT_POINTS]));
 }
 
+// Итоги моих доносов: утверждённый — в «Поборника справедливости», отклонённый — в «Ябеду».
+function courtOutcomes(board) {
+  const fresh = (board.proposals || []).filter((p) => p.author === board.me && p.kind === 'complaint'
+    && (p.status === 'approved' || p.status === 'rejected') && !S.courtSeen.includes(p.id));
+  if (!fresh.length) return;
+  mutate(() => {
+    for (const p of fresh) {
+      const rk = dateKey(new Date(p.resolved_at || Date.now())), t = todayKey();
+      const day = ensureDay(rk > t ? t : rk);
+      const cid = p.status === 'approved' ? 'court_truth' : 'court_rat';
+      day.cc = day.cc || {};
+      day.cc[cid] = (day.cc[cid] || 0) + 1;
+      S.courtSeen.push(p.id);
+    }
+    S.courtSeen = S.courtSeen.slice(-500);
+  });
+}
+
 // Утверждённые лигой отчёты обо мне — добавляем в нужный день.
 let applyingVerdicts = false;
 function applyVerdicts(board) {
   if (!board || applyingVerdicts) return;
+  courtOutcomes(board);
   const mine = (board.proposals || []).filter((p) => p.target === board.me && p.status === 'approved' && !p.applied);
   if (!mine.length) return;
   applyingVerdicts = true;
@@ -1829,7 +1853,7 @@ function questEditor(id, kind = 'quest') {
     <div id="qc-list">${Object.entries(q.c || {}).filter(([cid]) => counterById(cid)).map(([cid, v]) => qcRow(cid, v)).join('')}</div>
     <select id="qc-add" class="select">
       <option value="">＋ Привязать счётчик…</option>
-      ${SPHERES.filter((sp) => sp.id !== 'system').map((sp) => `<optgroup label="${sp.name}">${counterList(S).filter((c) => c.sphere === sp.id).map((c) => `<option value="${c.id}">${esc(c.name)} (${c.unit})</option>`).join('')}</optgroup>`).join('')}
+      ${SPHERES.filter((sp) => sp.id !== 'system').map((sp) => `<optgroup label="${sp.name}">${counterList(S).filter((c) => c.sphere === sp.id && !c.auto).map((c) => `<option value="${c.id}">${esc(c.name)} (${c.unit})</option>`).join('')}</optgroup>`).join('')}
     </select>
     <div class="row" style="margin-top:22px">
       ${id ? `<button class="btn danger" data-act="del-quest" data-kind="${kind}" data-id="${id}">Удалить</button>` : ''}
@@ -1859,7 +1883,7 @@ function counterSheet(id) {
     </div>
     ${isShame(c) ? `<div class="card" style="margin-top:12px">${redeemHTML(c)}${shameInfo(id).redeemed ? `<div class="small muted" style="margin-top:6px">Уже снято ступеней: ${shameInfo(id).redeemed}</div>` : ''}</div>`
       : `<div class="small muted" style="margin:12px 2px">${next ? `До ступени «${esc(next.title)}»: ${fmtNum(round1(next.goal - total))} ${c.unit}` : 'Все ступени этой цепочки пройдены!'}</div>`}
-    <label class="f">Добавить за сегодня</label>
+    ${c.auto ? '<div class="small muted" style="margin:6px 2px">Считается автоматически по решениям суда лиги.</div>' : `<label class="f">Добавить за сегодня</label>
     <div class="row qty">
       ${(big ? [1, 5, 10] : [1, 2, 5]).map((n) => `<button class="btn grow" data-act="counter-add" data-id="${id}" data-n="${n}">+${n}</button>`).join('')}
     </div>
@@ -1867,7 +1891,7 @@ function counterSheet(id) {
       <input type="text" inputmode="decimal" id="counter-n" placeholder="Своё число, ${c.unit}">
       <button class="btn primary" data-act="counter-add" data-id="${id}" data-n="custom">Добавить</button>
     </div>
-    ${(getDay(todayKey()) && (getDay(todayKey()).c || {})[id]) ? `<button class="btn danger block" data-act="counter-add" data-id="${id}" data-n="-1" style="margin-top:8px">−1 за сегодня</button>` : ''}
+    ${(getDay(todayKey()) && (getDay(todayKey()).c || {})[id]) ? `<button class="btn danger block" data-act="counter-add" data-id="${id}" data-n="-1" style="margin-top:8px">−1 за сегодня</button>` : ''}`}
     <div class="tiers big">${c.tiers.map((t, i) => {
       const r = rarityOf(c, i);
       return `<div class="tier ${total >= t.goal ? 'on' : ''}" style="--r:${r.color}"><span class="hx">${ico(total >= t.goal ? c.icon : 'sparkle')}</span><b>${fmtNum(t.goal)}</b><em>${esc(t.title)}</em></div>`;
@@ -2723,6 +2747,7 @@ ${LEAGUE.invite(c)}`, 'Приглашение скопировано');
       break;
     case 'counter': counterSheet(id); break;
     case 'counter-add': {
+      if ((counterById(id) || {}).auto) break;
       let n = el.dataset.n === 'custom' ? parseFloat(($('#counter-n').value || '').replace(',', '.')) : Number(el.dataset.n);
       if (!n || !isFinite(n)) { toast('Введи число'); break; }
       n = clamp(round1(n), -1000, 1000);

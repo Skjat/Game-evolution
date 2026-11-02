@@ -64,7 +64,7 @@ const AI = (() => {
     lines.push('', 'DEBUFFS — harmful actions (id — name | stats hit when a shame brand is reached | counters added automatically):');
     (S.debuffs || []).forEach((q) => lines.push(`- ${q.id} — ${q.name} | ${fmtRewards(q.rewards, S.stats)} | ${Object.entries(q.c || {}).map(([k, v]) => `${k} +${v}`).join(', ') || '—'}`));
     lines.push('', 'COUNTERS (id — name, unit | sphere | what counts, for counters the player created). Sphere "shame" = bad-habit counters:');
-    counterList(S).forEach((c) => lines.push(`- ${c.id} — ${c.name}, ${c.unit} | ${c.sphere}${c.custom ? ' | player-made' + (c.desc ? ': ' + c.desc : '') : ''}`));
+    counterList(S).filter((c) => !c.auto).forEach((c) => lines.push(`- ${c.id} — ${c.name}, ${c.unit} | ${c.sphere}${c.custom ? ' | player-made' + (c.desc ? ': ' + c.desc : '') : ''}`));
     lines.push('', 'MILESTONES (id — name: description):');
     milestoneList(S).forEach((m) => lines.push(`- ${m.id} — ${m.name}: ${m.desc || m.name}${m.custom ? ' (player-made)' : ''}`));
     return lines.join('\n');
@@ -119,7 +119,7 @@ ${catalogue(S)}`;
       quests: { type: 'array', items: obj({ id: idField(S.quests.map((q) => q.id)), count: { type: 'integer' } }) },
       debuffs: { type: 'array', items: obj({ id: idField((S.debuffs || []).map((q) => q.id)), count: { type: 'integer' } }) },
       stats: { type: 'array', items: obj({ id: idField(S.stats.map((s) => s.id)), points: { type: 'integer' }, reason: { type: 'string' } }) },
-      counters: { type: 'array', items: obj({ id: idField(counterList(S).map((c) => c.id)), amount: { type: 'number' }, reason: { type: 'string' } }) },
+      counters: { type: 'array', items: obj({ id: idField(counterList(S).filter((c) => !c.auto).map((c) => c.id)), amount: { type: 'number' }, reason: { type: 'string' } }) },
       milestones: { type: 'array', items: obj({ id: idField(milestoneList(S).map((m) => m.id)), reason: { type: 'string' } }) },
       new_counters: { type: 'array', items: obj({
         name: { type: 'string' }, unit: { type: 'string' }, sphere: { type: 'string', enum: sphereIds() }, icon: { type: 'string', enum: iconIds() },
@@ -208,7 +208,7 @@ ${catalogue(S)}`;
 
     const cMap = {};
     arr(r.counters).forEach((x) => {
-      if (!x || !counterList(S).find((c) => c.id === x.id)) return;
+      if (!x || !counterList(S).find((c) => c.id === x.id && !c.auto)) return;
       const a = Math.round((Number(x.amount) || 0) * 10) / 10;
       if (!(a > 0)) return;
       const prev = cMap[x.id];

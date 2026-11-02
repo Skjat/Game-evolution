@@ -113,9 +113,10 @@ async function proposalsFor(env, me) {
   let list = (await env.DB.prepare(
     `SELECT p.*, a.name AS authorName, a.avatar AS authorAvatar, t.name AS targetName, t.avatar AS targetAvatar FROM proposals p
      LEFT JOIN members a ON a.id = p.author LEFT JOIN members t ON t.id = p.target
-     WHERE p.league = ? AND (p.status = 'pending' OR p.created_at > ? OR (p.target = ? AND p.status = 'approved' AND p.applied = 0))
-     ORDER BY p.created_at DESC LIMIT 40`,
-  ).bind(me.league, now() - 14 * 864e5, me.id).all()).results;
+     WHERE p.league = ? AND (p.status = 'pending' OR p.created_at > ? OR (p.target = ? AND p.status = 'approved' AND p.applied = 0)
+       OR (p.author = ? AND p.created_at > ?))
+     ORDER BY p.created_at DESC LIMIT 60`,
+  ).bind(me.league, now() - 14 * 864e5, me.id, me.id, now() - 60 * 864e5).all()).results;
   list = await Promise.all(list.map((p) => resolve(env, p)));
   if (!list.length) return [];
   const ids = list.map((p) => p.id);
