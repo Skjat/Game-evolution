@@ -6,7 +6,7 @@
    ===================================================================== */
 
 const STORAGE_KEY = 'lvlup.v1';
-const APP_VERSION = 17;   // совпадает с номером в sw.js (lvlup-vN)
+const APP_VERSION = 18;   // совпадает с номером в sw.js (lvlup-vN)
 const QUEST_MAX_REWARD = 5;   // максимум очков подвига в один параметр
 const QUEST_DAY_LIMIT = 3;    // один подвиг — не больше 3 раз за день
 const DATA_VERSION = 5;
@@ -841,8 +841,19 @@ let histRange = 30;
 
 const TABS = [['hero', 'Герой', 'shieldStar'], ['day', 'Итоги', 'doc'], ['history', 'История', 'chart'], ['ach', 'Награды', 'trophy'], ['league', 'Лига', 'users'], ['settings', 'Ещё', 'gear']];
 
+// Сколько голосований суда лиги ждут моего голоса.
+function courtWaiting(b = LEAGUE.joined() ? LEAGUE.cfg().board : null) {
+  return b ? (b.proposals || []).filter((p) => p.status === 'pending' && p.canVote && !p.myVote).length : 0;
+}
 function render(enter) {
   document.querySelectorAll('#tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+  const lgBtn = $('#tabbar button[data-tab=league]');
+  if (lgBtn) {
+    const n = courtWaiting();
+    let bd = lgBtn.querySelector('.tbadge');
+    if (n && !bd) { bd = document.createElement('b'); bd.className = 'tbadge'; lgBtn.appendChild(bd); }
+    if (bd) { if (n) bd.textContent = n; else bd.remove(); }
+  }
   const v = $('#view');
   const prev = {};
   v.querySelectorAll('[data-bar]').forEach((el) => { prev[el.dataset.bar] = el.style.width; });
@@ -1373,7 +1384,7 @@ async function syncNow() {
     LEAGUE.set({ error: e.status === 401 ? 'Сервер больше не узнаёт тебя: восстанови доступ кодом или вступи заново' : e.message });
   }
   syncing = false;
-  if (tab === 'league' && $('#sheet').classList.contains('hidden')) render(false);
+  if ($('#sheet').classList.contains('hidden') && (tab === 'league' || courtWaiting())) render(false);
 }
 
 // Сервер лиги, развёрнутый в Cloudflare владельца приложения (можно поменять при создании лиги).
@@ -1503,9 +1514,10 @@ function viewLeague() {
         <button class="btn grow" data-act="lg-invite">${ico('upload')} Пригласить</button>
       </div>
     </div>
+    ${b && courtWaiting(b) ? courtHTML(b, true) : ''}
     <div class="seg">${LEAGUE_MODES.map(([k, l]) => `<button data-act="lg-mode" data-m="${k}" class="${leagueMode === k ? 'active' : ''}">${l}</button>`).join('')}</div>
     ${b ? leagueRows(b) : '<div class="empty">Загружаю таблицу…</div>'}
-    ${b ? courtHTML(b) : ''}
+    ${b && !courtWaiting(b) ? courtHTML(b) : ''}
     <h2>Лента лиги</h2>
     <div class="card">${b ? leagueFeed(b) : ''}</div>
     <div class="row" style="margin-top:14px">
@@ -1581,7 +1593,7 @@ function verdictItems(d) {
 }
 
 const VERDICT_STATUS = { approved: 'утверждено лигой', rejected: 'отклонено', expired: 'истекло', withdrawn: 'отозвано автором' };
-function courtHTML(b) {
+function courtHTML(b, urgent) {
   const list = (b.proposals || []).filter((p) => p.status === 'pending' || Date.now() - (p.resolved_at || p.created_at) < 3 * 864e5);
   if (!list.length) return '';
   const card = (p) => {
@@ -1608,7 +1620,7 @@ function courtHTML(b) {
     </div>`;
   };
   const pend = list.filter((p) => p.status === 'pending'), done = list.filter((p) => p.status !== 'pending');
-  return `<h2>Суд лиги</h2>${pend.map(card).join('')}${done.length ? `<details class="court-old"><summary>Решения за последние дни (${done.length})</summary>${done.map(card).join('')}</details>` : ''}`;
+  return `<h2>Суд лиги${urgent ? ' · нужен твой голос' : ''}</h2>${pend.map(card).join('')}${done.length ? `<details class="court-old"><summary>Решения за последние дни (${done.length})</summary>${done.map(card).join('')}</details>` : ''}`;
 }
 
 // Утверждённые лигой отчёты обо мне — добавляем в нужный день.

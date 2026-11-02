@@ -852,3 +852,6 @@ body[data-dummy], [data-theme="grimoire"] body { background: radial-gradient(ell
 .court .cvotes { display: flex; gap: 12px; flex-wrap: wrap; font: 600 12px var(--mono); margin-top: 8px; }
 .court-old { margin: 4px 0 10px; }
 .court-old > summary { padding: 6px 2px 10px; }
+
+.tabbar button { position: relative; }
+.tbadge { position: absolute; top: 0; left: 50%; margin-left: 6px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 99px; background: var(--bad); color: #fff; font: 700 10px/16px var(--body); letter-spacing: 0; text-align: center; box-shadow: 0 0 8px rgba(var(--bad-rgb), .6); }
