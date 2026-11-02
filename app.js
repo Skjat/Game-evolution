@@ -6,7 +6,9 @@
    ===================================================================== */
 
 const STORAGE_KEY = 'lvlup.v1';
-const APP_VERSION = 16;   // совпадает с номером в sw.js (lvlup-vN)
+const APP_VERSION = 17;   // совпадает с номером в sw.js (lvlup-vN)
+const QUEST_MAX_REWARD = 5;   // максимум очков подвига в один параметр
+const QUEST_DAY_LIMIT = 3;    // один подвиг — не больше 3 раз за день
 const DATA_VERSION = 5;
 
 /* ---------------------- Иконки (SVG, 24×24, линии) ---------------------- */
@@ -307,6 +309,7 @@ function migrate(s) {
   s.custom = Object.assign({ counters: [], milestones: [] }, s.custom || {});
   s.shared = Object.assign({ counters: [], milestones: [] }, s.shared || {});
   if (!Array.isArray(s.courtDone)) s.courtDone = [];
+  for (const q of s.quests || []) for (const k in q.rewards || {}) q.rewards[k] = Math.max(-QUEST_MAX_REWARD, Math.min(QUEST_MAX_REWARD, Number(q.rewards[k]) || 0));
   s.v = DATA_VERSION;
   return s;
 }
@@ -353,7 +356,9 @@ function ensureDay(k) {
   if (!d.b) d.b = [];
   return d;
 }
-// Очки дня: ручные + подвиги + штрафы за клейма, полученные (или снятые искуплением) в этот день.
+const capRewards = (r) => Object.fromEntries(Object.entries(r || {}).map(([k, v]) => [k, clamp(Number(v) || 0, -QUEST_MAX_REWARD, QUEST_MAX_REWARD)]));
+
+// Очки дня: от ИИ + подвиги + штрафы за клейма, полученные (или снятые искуплением) в этот день.
 // Сами слабости очков не отнимают — они копят позор; параметры падают, когда набирается ступень клейма.
 function dayPoints(day, k) {
   const p = {};
@@ -963,7 +968,7 @@ function viewDay() {
   (day.d || []).forEach((x) => { counts[x.q] = (counts[x.q] || 0) + 1; });
 
   const quests = S.quests.map((q) => `
-    <button class="quest ${counts[q.id] ? 'done' : ''}" data-act="quest" data-id="${q.id}">
+    <button class="quest ${counts[q.id] ? 'done' : ''} ${counts[q.id] >= QUEST_DAY_LIMIT ? 'maxed' : ''}" data-act="quest" data-id="${q.id}">
       ${counts[q.id] ? `<span class="qc">${counts[q.id] > 1 ? '×' + counts[q.id] : '✓'}</span>` : ''}
       <span class="qi">${ico(q.icon)}</span>
       <span class="qn">${esc(q.name)}</span>
@@ -1015,19 +1020,13 @@ function viewDay() {
     }),
   ].join('');
 
-  const rows = S.stats.map((s) => {
-    const v = pts[s.id] || 0;
-    return `
-      <div class="card stat compact">
-        <div class="sico" style="color:${s.color}">${ico(s.icon)}</div>
-        <div class="grow"><div class="sn">${esc(s.name)}</div></div>
-        <div class="stepper">
-          <button class="icon-btn" data-act="dec" data-id="${s.id}">−</button>
-          <span class="val ${v > 0 ? 'pos' : v < 0 ? 'neg' : ''}" id="val-${s.id}">${v > 0 ? '+' + v : v}</span>
-          <button class="icon-btn" data-act="inc" data-id="${s.id}">+</button>
-        </div>
-      </div>`;
-  }).join('');
+  // Очки параметрам напрямую начисляет только ИИ-отчёт; вручную их можно лишь убрать.
+  const aiPts = S.stats.filter((s) => (day.m || {})[s.id]).map((s) => `
+    <div class="done-item">
+      <span class="qi" style="color:${s.color}">${ico(s.icon)}</span>
+      <div class="grow"><div style="font-weight:600;font-size:14px">${esc(s.name)} <span class="${day.m[s.id] > 0 ? 'today-plus' : 'today-minus'}">${sign(day.m[s.id])}</span></div><span class="small muted">начислено ИИ-отчётом</span></div>
+      <button class="icon-btn" data-act="rm-points" data-id="${s.id}" aria-label="Убрать">✕</button>
+    </div>`).join('');
 
   return `
     <div class="datebar">
@@ -1049,8 +1048,7 @@ function viewDay() {
     <div class="small muted" style="margin:-4px 2px 10px">Честно отметь, где сорвался. Слабость копит позор, а параметры падают, когда набирается новая ступень клейма. 14 чистых дней снимают ступень и возвращают очки.</div>
     <div class="quests">${debuffs}</div>
     ${bdone || brands ? `<div class="card bad-card" style="margin-top:12px">${brands}${bdone}</div>` : ''}
-    <h2>Ручное начисление</h2>
-    ${rows}
+    ${aiPts ? `<h2>Очки от ИИ</h2><div class="card">${aiPts}</div>` : ''}
     <h2>Заметка дня</h2>
     <textarea id="note" placeholder="Что получилось? Чем гордишься? Что улучшить завтра?">${esc(day.note || '')}</textarea>
   `;
@@ -1316,10 +1314,10 @@ function viewSettings() {
 
     <h2>Как это работает</h2>
     <div class="card small muted">
-      Каждый вечер отмечай подвиги и/или вручную начисляй очки параметрам.
+      Каждый вечер отмечай подвиги или расскажи о дне ИИ — он начислит очки за то, что не покрывают подвиги. Вручную очки параметрам не начисляются.
       Чтобы параметр перешёл с уровня N на N+1, нужно 10×N очков: первые уровни даются быстро, дальше нужна регулярность.
       Уровень персонажа растёт от суммы всех очков. Серия — сколько дней подряд ты прокачивался.
-      Подвиги, ручные отметки и ИИ-отчёт двигают счётчики достижений: книги, километры, знакомства и т.д.
+      Подвиги, ИИ-отчёт и кнопка «+» у цепочек двигают счётчики достижений: книги, километры, знакомства и т.д.
     </div>
     <div class="ver">LEVEL UP · v3 · REACTOR</div>
   `;
@@ -1629,7 +1627,7 @@ function applyVerdicts(board) {
         const tag = { by, pid: p.id, kind: p.kind };
         const item = (x, list) => {
           const local = list.find((y) => y.id === x.id) || x;
-          return { q: local.id, n: local.name || x.n, i: local.icon || x.i, r: clone(local.rewards || x.r || {}), c: clone(local.c || {}), ...tag };
+          return { q: local.id, n: local.name || x.n, i: local.icon || x.i, r: capRewards(local.rewards || x.r || {}), c: clone(local.c || {}), ...tag };
         };
         (d.q || []).forEach((x) => { for (let i = 0; i < clamp(x.k || 1, 1, 5); i++) day.d.push(item(x, S.quests)); });
         (d.b || []).forEach((x) => { for (let i = 0; i < clamp(x.k || 1, 1, 5); i++) day.b.push(item(x, S.debuffs || [])); });
@@ -1666,7 +1664,7 @@ function memberSheet(id) {
     ${(p.stats || []).length ? `<h2>Параметры</h2><div class="chips">${p.stats.map((s) => `<span class="chip" style="color:${s.c}">${ico(s.i)}${esc(s.n)} ${s.l}</span>`).join('')}</div>` : ''}
     ${p.weekStart === ws ? `<h2>Откуда XP за неделю</h2><div class="card small">
       <div class="row between"><span>Подвиги</span><b>+${src.quests || 0}</b></div>
-      <div class="row between"><span>Вручную</span><b>+${src.manual || 0}</b></div>
+      <div class="row between"><span>От ИИ</span><b>+${src.manual || 0}</b></div>
       <div class="row between tox"><span>Слабости и штрафы</span><b>${src.penalties || 0}</b></div></div>` : ''}
     <h2 class="bad-h">Позор</h2>
     ${loser && loser.id === m.id ? `<div class="card small shame-intro" style="margin-bottom:8px">${ico('skull')}<div><b class="tox">Позор недели</b><div class="muted">Больше всех слабостей за прошлую неделю: ${loser.weak}${loser.loss ? ` · штрафы за клейма ${loser.loss} XP` : ''}</div></div></div>` : ''}
@@ -1750,7 +1748,7 @@ function questEditor(id, kind = 'quest') {
     <input type="text" id="q-name" value="${esc(q.name)}" maxlength="40" placeholder="${bad ? 'Например, Ночной дожор' : 'Например, Холодный душ'}">
     <label class="f">Символ</label>
     ${iconPicker(q.icon)}
-    <label class="f">${bad ? 'По каким параметрам бьют клейма (сильнее — полный штраф, слабее — половина)' : 'Награда'}</label>
+    <label class="f">${bad ? 'По каким параметрам бьют клейма (сильнее — полный штраф, слабее — половина)' : `Награда (до ${QUEST_MAX_REWARD} очков в параметр, подвиг — до ${QUEST_DAY_LIMIT} раз в день)`}</label>
     ${S.stats.map((s) => {
       const v = q.rewards[s.id] || 0;
       return `
@@ -2310,7 +2308,7 @@ function aiApply() {
     });
     r.stats.forEach((x) => {
       if (!ai.sel['s:' + x.id] || x.points <= 0) return;   // очки за вред не снимаются — только клейма
-      day.m[x.id] = clamp((day.m[x.id] || 0) + x.points, -50, 99);
+      day.m[x.id] = clamp((day.m[x.id] || 0) + Math.min(x.points, QUEST_MAX_REWARD), -50, 15);
       if (!day.m[x.id]) delete day.m[x.id];
       gained[x.id] = (gained[x.id] || 0) + x.points;
     });
@@ -2490,31 +2488,22 @@ document.addEventListener('click', (e) => {
     case 'prev-day': curDate = addDays(curDate, -1); render(true); break;
     case 'next-day': if (curDate < todayKey()) { curDate = addDays(curDate, 1); render(true); } break;
 
-    case 'inc':
-    case 'dec': {
-      const st = statById(id);
-      const d = act === 'inc' ? 1 : -1;
-      const [x, y] = centerOf($('#val-' + id));
-      mutate(() => {
-        const day = ensureDay(curDate);
-        day.m[id] = clamp((day.m[id] || 0) + d, -50, 99);
-        if (!day.m[id]) delete day.m[id];
-      });
-      ['#val-' + id, '#daytotal'].forEach((s) => { const n = $(s); if (n) n.classList.add('bump'); });
-      fx('float', x, y - 10, `color:${d > 0 ? st.color : 'var(--bad)'}`, sign(d), 1200);
-      if (d > 0) burst(x, y, 6);
+    case 'rm-points':
+      mutate(() => { const day = ensureDay(curDate); delete day.m[id]; });
       break;
-    }
     case 'quest': {
       const q = S.quests.find((x) => x.id === id);
       if (!q) break;
       const [x, y] = [e.clientX || centerOf(el)[0], e.clientY || centerOf(el)[1]];
-      mutate(() => { ensureDay(curDate).d.push({ q: q.id, n: q.name, i: q.icon, r: clone(q.rewards), c: clone(q.c || {}) }); });
+      if ((getDay(curDate) || { d: [] }).d.filter((z) => z.q === q.id).length >= QUEST_DAY_LIMIT) {
+        toast(`«${q.name}» — не больше ${QUEST_DAY_LIMIT} раз за день`); SFX.play('error'); break;
+      }
+      mutate(() => { ensureDay(curDate).d.push({ q: q.id, n: q.name, i: q.icon, r: capRewards(q.rewards), c: clone(q.c || {}) }); });
       const card = $(`[data-act=quest][data-id="${id}"]`);
       if (card) { card.classList.add('hit'); }
       const dt = $('#daytotal'); if (dt) dt.classList.add('bump');
       burst(x, y, 12);
-      floats(x, y - 20, Object.entries(q.rewards).filter(([sid, v]) => v && statById(sid))
+      floats(x, y - 20, Object.entries(capRewards(q.rewards)).filter(([sid, v]) => v && statById(sid))
         .map(([sid, v]) => ({ icon: statById(sid).icon, text: sign(v), color: statById(sid).color })));
       break;
     }
@@ -2622,8 +2611,8 @@ ${LEAGUE.invite(c)}`, 'Приглашение скопировано');
     case 'qr-inc':
     case 'qr-dec': {
       const v = $('#qr-' + id);
-      const max = el.dataset.max !== undefined ? Number(el.dataset.max) : 20;
-      const n = clamp(Number(v.dataset.v) + (act === 'qr-inc' ? 1 : -1), -20, max);
+      const max = el.dataset.max !== undefined ? Number(el.dataset.max) : QUEST_MAX_REWARD;
+      const n = clamp(Number(v.dataset.v) + (act === 'qr-inc' ? 1 : -1), -QUEST_MAX_REWARD, max);
       v.dataset.v = n; v.textContent = n;
       v.className = 'val bump ' + (n > 0 ? 'pos' : n < 0 ? 'neg' : '');
       void v.offsetWidth;
@@ -2634,7 +2623,7 @@ ${LEAGUE.invite(c)}`, 'Приглашение скопировано');
       if (!name) { toast('Введите название'); break; }
       const icon = $('#pick-icon').value || 'bolt';
       const rewards = {};
-      S.stats.forEach((s) => { const n = Number($('#qr-' + s.id).dataset.v); if (n) rewards[s.id] = n; });
+      S.stats.forEach((s) => { const n = clamp(Number($('#qr-' + s.id).dataset.v) || 0, -QUEST_MAX_REWARD, QUEST_MAX_REWARD); if (n) rewards[s.id] = n; });
       const c = {};
       document.querySelectorAll('#qc-list [data-qc]').forEach((row) => { const n = Number($('#qc-' + row.dataset.qc).dataset.v); if (n > 0) c[row.dataset.qc] = n; });
       const kind = el.dataset.kind || 'quest';
