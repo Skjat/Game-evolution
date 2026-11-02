@@ -268,6 +268,7 @@ function defaultState() {
     settings: { sound: true, theme: 'reactor' },
     custom: { counters: [], milestones: [] },   // свои достижения игрока
     shared: { counters: [], milestones: [] },   // общие достижения лиги (приходят с сервера)
+    courtDone: [],                              // id решений суда лиги, уже добавленных в дни
     created: todayKey(),
   };
 }
@@ -304,6 +305,7 @@ function migrate(s) {
   s.settings = Object.assign({ sound: true, theme: 'reactor' }, s.settings || {});
   s.custom = Object.assign({ counters: [], milestones: [] }, s.custom || {});
   s.shared = Object.assign({ counters: [], milestones: [] }, s.shared || {});
+  if (!Array.isArray(s.courtDone)) s.courtDone = [];
   s.v = DATA_VERSION;
   return s;
 }
@@ -978,7 +980,7 @@ function viewDay() {
   const bdone = (day.b || []).map((x, i) => `
     <div class="done-item bad">
       <span class="qi">${ico(x.i)}</span>
-      <div class="grow"><div style="font-weight:600;font-size:14px">${esc(x.n)}</div><span class="small muted">${Object.entries(x.c || {}).filter(([cid]) => counterById(cid)).map(([cid, v]) => `${esc(counterById(cid).name)} +${fmtNum(v)}`).join(' · ') || 'без последствий'}</span></div>
+      <div class="grow"><div style="font-weight:600;font-size:14px">${esc(x.n)}${x.by ? `<span class="tag shamewk">донос · ${esc(x.by)}</span>` : ''}</div><span class="small muted">${Object.entries(x.c || {}).filter(([cid]) => counterById(cid)).map(([cid, v]) => `${esc(counterById(cid).name)} +${fmtNum(v)}`).join(' · ') || 'без последствий'}</span></div>
       <button class="icon-btn" data-act="undo-debuff" data-idx="${i}" aria-label="Отменить">✕</button>
     </div>`).join('');
   const brands = brandEvents(curDate).map((e) => `
@@ -991,7 +993,7 @@ function viewDay() {
   const done = (day.d || []).map((x, i) => `
     <div class="done-item">
       <span class="qi">${ico(x.i)}</span>
-      <div class="grow"><div style="font-weight:600;font-size:14px">${esc(x.n)}</div><span class="qr" style="margin-top:3px">${rewardsHTML(x.r)}</span></div>
+      <div class="grow"><div style="font-weight:600;font-size:14px">${esc(x.n)}${x.by ? `<span class="tag lg">лига · ${esc(x.by)}</span>` : ''}</div><span class="qr" style="margin-top:3px">${rewardsHTML(x.r)}</span></div>
       <button class="icon-btn" data-act="undo-quest" data-idx="${i}" aria-label="Отменить">✕</button>
     </div>`).join('');
 
@@ -1362,6 +1364,7 @@ async function syncNow() {
   try {
     const board = await LEAGUE.sync({ name: S.profile.name, avatar: S.profile.avatar, profile: leagueProfile() });
     if (applySharedItems(board) && tab === 'ach') render(false);
+    applyVerdicts(board);
   } catch (e) {
     LEAGUE.set({ error: e.status === 401 ? 'Сервер больше не узнаёт тебя: восстанови доступ кодом или вступи заново' : e.message });
   }
@@ -1498,12 +1501,145 @@ function viewLeague() {
     </div>
     <div class="seg">${LEAGUE_MODES.map(([k, l]) => `<button data-act="lg-mode" data-m="${k}" class="${leagueMode === k ? 'active' : ''}">${l}</button>`).join('')}</div>
     ${b ? leagueRows(b) : '<div class="empty">Загружаю таблицу…</div>'}
+    ${b ? courtHTML(b) : ''}
     <h2>Лента лиги</h2>
     <div class="card">${b ? leagueFeed(b) : ''}</div>
     <div class="row" style="margin-top:14px">
       <button class="btn grow sm" data-act="lg-recovery">Код восстановления</button>
       <button class="btn grow sm danger" data-act="lg-leave">Покинуть лигу</button>
     </div>`;
+}
+
+/* ---------------------- Суд лиги: доносы и похвалы ---------------------- */
+
+function reportOpen(id, kind) {
+  const b = LEAGUE.cfg().board;
+  const m = b && b.members.find((x) => x.id === id);
+  if (!m) return;
+  if (!AI.ready()) {
+    openSheet(`
+      <h1>Нужен ИИ</h1>
+      <div class="muted">Донос и похвалу разбирает ИИ: он превращает рассказ в отчёт для голосования. Подключи Claude или свой сервер в настройках.</div>
+      <div class="row" style="margin-top:20px">
+        <button class="btn grow" data-act="close-sheet">Позже</button>
+        <button class="btn primary grow" data-act="ai-setup">Открыть настройки</button>
+      </div>`);
+    return;
+  }
+  ai = { phase: 'input', text: '', result: null, sel: {}, error: '', report: { target: id, name: m.name, kind, day: todayKey() } };
+  aiRender();
+}
+
+// Отчёт для голосования: выбранные пункты вместе с описаниями, чтобы их можно было применить на чужом телефоне.
+function reportData() {
+  const r = ai.result, sel = ai.sel, out = { q: [], b: [], s: [], c: [], m: [] };
+  const pick = (q) => ({ id: q.id, n: q.name, i: q.icon, r: clone(q.rewards || {}), c: clone(q.c || {}) });
+  r.quests.forEach((x) => { const q = S.quests.find((y) => y.id === x.id); if (q && sel['q:' + x.id]) out.q.push({ ...pick(q), k: x.count }); });
+  (r.debuffs || []).forEach((x) => { const q = (S.debuffs || []).find((y) => y.id === x.id); if (q && sel['b:' + x.id]) out.b.push({ ...pick(q), k: x.count }); });
+  r.stats.forEach((x) => { const st = statById(x.id); if (st && sel['s:' + x.id] && x.points > 0) out.s.push({ id: x.id, n: st.name, p: x.points }); });
+  r.counters.forEach((x) => { const c = counterById(x.id); if (c && sel['c:' + x.id]) out.c.push({ id: x.id, n: c.name, u: c.unit, i: c.icon, a: x.amount }); });
+  r.milestones.forEach((x) => { const m = milestoneById(x.id); if (m && sel['m:' + x.id]) out.m.push({ id: x.id, n: m.name, i: m.icon }); });
+  out.note = (($('#ai-note') || {}).value || r.note || '').trim().slice(0, 400);
+  return out;
+}
+
+async function reportSend() {
+  const rp = ai.report;
+  if (!rp || !ai.result) return;
+  const data = reportData();
+  if (!data.q.length && !data.b.length && !data.s.length && !data.c.length && !data.m.length) { toast('Отметь хотя бы один пункт'); return; }
+  const btn = $('[data-act=rp-send]'); if (btn) { btn.disabled = true; btn.textContent = 'Отправляю…'; }
+  try {
+    await LEAGUE.propose(rp.target, rp.day, rp.kind, ai.text.trim(), (ai.result.summary || ai.text).trim().slice(0, 300), data);
+    closeSheet();
+    ai = { phase: 'input', text: '', result: null, sel: {}, error: '', report: null };
+    toast(rp.kind === 'praise' ? 'Похвала отправлена на голосование' : 'Донос отправлен на голосование', 'gold', 'balance');
+    SFX.play('confirm');
+    go('league');
+    syncNow();
+  } catch (e) {
+    SFX.play('error');
+    toast(e.message || String(e));
+    if (btn) { btn.disabled = false; btn.textContent = 'Отправить'; }
+  }
+}
+
+// Что именно предлагается записать — компактно, для карточки голосования.
+function verdictItems(d) {
+  const chip = (icon, text, color) => `<span class="chip" style="color:${color}">${ico(icon)}${esc(text)}</span>`;
+  return [
+    ...(d.q || []).map((x) => chip(x.i, x.n + (x.k > 1 ? ' ×' + x.k : ''), 'var(--ic)')),
+    ...(d.b || []).map((x) => chip(x.i, x.n + (x.k > 1 ? ' ×' + x.k : ''), 'var(--tox)')),
+    ...(d.s || []).map((x) => chip('sparkle', `${x.n} +${x.p}`, 'var(--am)')),
+    ...(d.c || []).map((x) => chip(x.i || 'star', `${x.n} +${fmtNum(x.a)} ${x.u || ''}`.trim(), 'var(--ic)')),
+    ...(d.m || []).map((x) => chip(x.i || 'medal', 'Веха: ' + x.n, 'var(--am)')),
+  ].join('');
+}
+
+const VERDICT_STATUS = { approved: 'утверждено лигой', rejected: 'отклонено', expired: 'истекло', withdrawn: 'отозвано автором' };
+function courtHTML(b) {
+  const list = (b.proposals || []).filter((p) => p.status === 'pending' || Date.now() - (p.resolved_at || p.created_at) < 3 * 864e5);
+  if (!list.length) return '';
+  const card = (p) => {
+    const praise = p.kind === 'praise', me = b.me;
+    const pending = p.status === 'pending';
+    const about = p.target === me ? 'о тебе' : '';
+    return `<div class="card court ${praise ? 'praise' : 'complaint'} ${pending ? '' : 'closed'}">
+      <div class="row" style="gap:10px">${miniAvatar(p.authorAvatar)}
+        <div class="grow"><div class="ct"><b>${esc(p.authorName)}</b> ${praise ? 'хвалит' : 'доносит'} → <b>${esc(p.targetName)}</b>${about ? ` <span class="tag ${praise ? 'lg' : 'shamewk'}">${about}</span>` : ''}</div>
+          <div class="sx">${shortDate(p.day)} · ${timeAgo(p.created_at)}</div></div>
+        <span class="cico ${praise ? '' : 'tox'}">${ico(praise ? 'medal' : 'balance')}</span></div>
+      <div class="csum">${esc(p.summary)}</div>
+      <div class="chips">${verdictItems(p.data || {})}</div>
+      <details class="ctext"><summary>Что рассказал ${esc(p.authorName)}</summary><div>«${esc(p.text)}»</div></details>
+      <div class="cvotes">
+        <span class="ok">за ${p.yes}</span><span class="err">против ${p.no}</span>
+        <span class="muted">${pending ? `нужно ${p.need} из ${p.voters}` : VERDICT_STATUS[p.status] || p.status}</span>
+      </div>
+      ${pending && p.canVote ? `<div class="row" style="margin-top:10px">
+        <button class="btn grow sm ${p.myVote > 0 ? 'primary' : ''}" data-act="rp-vote" data-id="${p.id}" data-v="${p.myVote > 0 ? 0 : 1}">${ico('check')} За</button>
+        <button class="btn grow sm ${p.myVote < 0 ? 'danger' : ''}" data-act="rp-vote" data-id="${p.id}" data-v="${p.myVote < 0 ? 0 : -1}">✕ Против</button>
+      </div>` : pending && p.target === me ? '<div class="small muted" style="margin-top:8px">Отчёт о тебе — решают остальные участники.</div>' : ''}
+      ${pending && p.author === me ? `<button class="btn block sm" style="margin-top:8px" data-act="rp-withdraw" data-id="${p.id}">Отозвать</button>` : ''}
+    </div>`;
+  };
+  const pend = list.filter((p) => p.status === 'pending'), done = list.filter((p) => p.status !== 'pending');
+  return `<h2>Суд лиги</h2>${pend.map(card).join('')}${done.length ? `<details class="court-old"><summary>Решения за последние дни (${done.length})</summary>${done.map(card).join('')}</details>` : ''}`;
+}
+
+// Утверждённые лигой отчёты обо мне — добавляем в нужный день.
+let applyingVerdicts = false;
+function applyVerdicts(board) {
+  if (!board || applyingVerdicts) return;
+  const mine = (board.proposals || []).filter((p) => p.target === board.me && p.status === 'approved' && !p.applied);
+  if (!mine.length) return;
+  applyingVerdicts = true;
+  const fresh = mine.filter((p) => !S.courtDone.includes(p.id));
+  if (fresh.length) {
+    mutate(() => {
+      for (const p of fresh) {
+        const d = p.data || {}, by = p.authorName, t = todayKey();
+        const day = ensureDay(/^\d{4}-\d{2}-\d{2}$/.test(p.day) && p.day <= t ? p.day : t);
+        const tag = { by, pid: p.id, kind: p.kind };
+        const item = (x, list) => {
+          const local = list.find((y) => y.id === x.id) || x;
+          return { q: local.id, n: local.name || x.n, i: local.icon || x.i, r: clone(local.rewards || x.r || {}), c: clone(local.c || {}), ...tag };
+        };
+        (d.q || []).forEach((x) => { for (let i = 0; i < clamp(x.k || 1, 1, 5); i++) day.d.push(item(x, S.quests)); });
+        (d.b || []).forEach((x) => { for (let i = 0; i < clamp(x.k || 1, 1, 5); i++) day.b.push(item(x, S.debuffs || [])); });
+        (d.s || []).forEach((x) => { if (statById(x.id) && x.p > 0) day.m[x.id] = clamp((day.m[x.id] || 0) + Math.min(10, x.p), -50, 99); });
+        (d.c || []).forEach((x) => { if (counterById(x.id) && x.a > 0) day.c[x.id] = round1((day.c[x.id] || 0) + Math.min(1000, x.a)); });
+        const unlocked = milestoneDates();
+        (d.m || []).forEach((x) => { if (milestoneById(x.id) && !unlocked[x.id] && !day.ms.includes(x.id)) day.ms.push(x.id); });
+        const line = `⚖ Решение лиги — ${p.kind === 'praise' ? 'похвала' : 'донос'}, автор ${by}: ${d.note || p.summary}`;
+        day.note = day.note && day.note.trim() ? day.note.trim() + '\n' + line : line;
+        S.courtDone.push(p.id);
+      }
+      S.courtDone = S.courtDone.slice(-300);
+    });
+    fresh.forEach((p, i) => setTimeout(() => toast(`Лига утвердила ${p.kind === 'praise' ? 'похвалу' : 'донос'} (автор — ${p.authorName}): ${p.summary}`, p.kind === 'praise' ? 'gold' : 'shame', p.kind === 'praise' ? 'medal' : 'balance'), 900 + i * 400));
+  }
+  Promise.all(mine.map((p) => LEAGUE.markApplied(p.id).catch(() => null))).finally(() => { applyingVerdicts = false; });
 }
 
 function memberSheet(id) {
@@ -1529,6 +1665,12 @@ function memberSheet(id) {
     <h2 class="bad-h">Позор</h2>
     ${loser && loser.id === m.id ? `<div class="card small shame-intro" style="margin-bottom:8px">${ico('skull')}<div><b class="tox">Позор недели</b><div class="muted">Больше всех слабостей за прошлую неделю: ${loser.weak}${loser.loss ? ` · штрафы за клейма ${loser.loss} XP` : ''}</div></div></div>` : ''}
     <div class="card small">${(p.shameTitles || []).length ? `<span class="tox">${ico('skull')} ${p.shameTitles.map(esc).join(' · ')}</span><div class="muted" style="margin-top:6px">Всего клейм: ${p.shame || 0}</div>` : 'Клейм нет. Пока.'}</div>
+    ${m.id !== b.me ? `<h2>Суд лиги</h2>
+    <div class="row">
+      <button class="btn grow" data-act="rp-open" data-id="${m.id}" data-k="praise">${ico('medal')} Похвалить</button>
+      <button class="btn grow danger" data-act="rp-open" data-id="${m.id}" data-k="complaint">${ico('balance')} Донести</button>
+    </div>
+    <div class="small muted" style="margin-top:8px">ИИ составит отчёт за день, лига проголосует. При большинстве «за» он добавится в день ${esc(m.name)}.</div>` : ''}
     <div class="sx" style="margin-top:12px;text-align:center">обновлено ${timeAgo(m.updated_at)}</div>
   `);
 }
@@ -1971,13 +2113,33 @@ function aiOpen() {
       </div>`);
     return;
   }
+  if (ai.report) ai = { ...ai, report: null, text: '' };
   ai = { ...ai, phase: 'input', result: null, error: '' };
   aiRender();
 }
 
 function aiRender() {
-  const head = `<div class="sx" style="margin-bottom:10px">${humanDate(curDate)} · ${esc(AI.providerName())}</div>`;
-  if (ai.phase === 'input') {
+  const rp = ai.report;
+  const head = `<div class="sx" style="margin-bottom:10px">${rp ? `${rp.kind === 'praise' ? 'похвала' : 'донос'} · ${esc(rp.name)} · ` : ''}${humanDate(rp ? rp.day : curDate)} · ${esc(AI.providerName())}</div>`;
+  if (ai.phase === 'input' && rp) {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const t = todayKey();
+    openSheet(`
+      <h1>${rp.kind === 'praise' ? 'Похвала' : 'Донос'}: ${esc(rp.name)}</h1>${head}
+      <div class="small muted" style="margin-bottom:10px">${rp.kind === 'praise'
+        ? 'Расскажи, чем отличился товарищ. ИИ превратит рассказ в отчёт за день, лига проголосует — и при большинстве «за» подвиги добавятся в его день.'
+        : 'Расскажи, где товарищ сорвался. ИИ составит отчёт, лига проголосует — и при большинстве «за» слабости запишутся в его день.'}</div>
+      <div class="seg">${[[t, 'Сегодня'], [addDays(t, -1), 'Вчера'], [addDays(t, -2), 'Позавчера']].map(([k, l]) => `<button data-act="rp-day" data-k="${k}" class="${rp.day === k ? 'active' : ''}">${l}</button>`).join('')}</div>
+      <textarea id="ai-text" style="min-height:140px;margin-top:12px" placeholder="${rp.kind === 'praise' ? 'Например: сегодня утром пробежал с нами 10 км и ещё помог другу с переездом' : 'Например: вечером при мне съел два бургера и выпил три энергетика'}">${esc(ai.text)}</textarea>
+      <div class="row" style="margin-top:10px">
+        ${SR ? `<button class="icon-btn mic ${micOn ? 'rec' : ''}" data-act="ai-mic" aria-label="Диктовка">${ico('mic')}</button>` : ''}
+        <span class="small muted grow" id="ai-mic-hint">${SR ? (micOn ? 'Слушаю… нажми ещё раз, чтобы остановить' : 'Можно надиктовать') : 'Для голосового ввода нажми микрофон на клавиатуре'}</span>
+      </div>
+      <div class="row" style="margin-top:16px">
+        <button class="btn grow" data-act="close-sheet">Отмена</button>
+        <button class="btn primary grow" data-act="ai-send">${ico(TI().act)} Составить отчёт</button>
+      </div>`);
+  } else if (ai.phase === 'input') {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     openSheet(`
       <h1>Отчёт за день</h1>${head}
@@ -2022,7 +2184,7 @@ function aiResultHTML(head) {
   const qs = r.quests.map((x) => { const q = S.quests.find((y) => y.id === x.id);
     return row('q:' + x.id, ico(q.icon), esc(q.name) + (x.count > 1 ? ' ×' + x.count : ''), rewardsHTML(Object.fromEntries(Object.entries(q.rewards).map(([k, v]) => [k, v * x.count]))), 'var(--ic)'); }).join('');
   const bs = (r.debuffs || []).map((x) => { const q = (S.debuffs || []).find((y) => y.id === x.id);
-    return q ? row('b:' + x.id, ico(q.icon), esc(q.name) + (x.count > 1 ? ' ×' + x.count : ''), debuffHint(q), 'var(--tox)') : ''; }).join('');
+    return q ? row('b:' + x.id, ico(q.icon), esc(q.name) + (x.count > 1 ? ' ×' + x.count : ''), ai.report ? 'пойдёт в его цепочку позора' : debuffHint(q), 'var(--tox)') : ''; }).join('');
   const st = r.stats.map((x) => { const s = statById(x.id);
     return row('s:' + x.id, ico(s.icon), `${esc(s.name)} <b style="color:${s.color}">${sign(x.points)}</b>`, esc(x.reason), s.color); }).join('');
   const cs = r.counters.map((x) => { const c = counterById(x.id);
@@ -2035,6 +2197,23 @@ function aiResultHTML(head) {
     `${esc(x.desc)}${x.done ? ' · открыть сегодня' : ''}`, 'var(--am)')).join('');
   const shareRow = (nc || nm) && LEAGUE.joined() ? row('share', ico('users'), 'Поделиться новыми с лигой', 'друзья тоже смогут их получить', 'var(--ic)') : '';
   const empty = !qs && !bs && !st && !cs && !ms && !nc && !nm;
+  const rp = ai.report;
+  if (rp) return `
+    <h1>${rp.kind === 'praise' ? 'Похвала' : 'Донос'} готов</h1>${head}
+    ${r.summary ? `<div class="card sweep ai-sum">${ico(TI().magic)}<span>${esc(r.summary)}</span></div>` : ''}
+    ${qs ? `<h2>Подвиги</h2>${qs}` : ''}
+    ${bs ? `<h2 class="bad-h">Слабости</h2>${bs}` : ''}
+    ${st ? `<h2>Очки параметров</h2>${st}` : ''}
+    ${cs ? `<h2>Счётчики достижений</h2>${cs}` : ''}
+    ${ms ? `<h2>Вехи</h2>${ms}` : ''}
+    ${!qs && !bs && !st && !cs && !ms ? '<div class="empty">ИИ не нашёл, что записать. Расскажи конкретнее: что именно и когда.</div>' : ''}
+    <h2>Запись в дневник</h2>
+    <textarea id="ai-note">${esc(r.note)}</textarea>
+    <div class="small muted" style="margin-top:8px">Отчёт увидят все участники лиги и ${esc(rp.name)}. Решение — большинством голосов, голосование идёт неделю.</div>
+    <div class="row" style="margin-top:16px">
+      <button class="btn grow" data-act="ai-back">Изменить</button>
+      <button class="btn primary grow" data-act="rp-send" ${!qs && !bs && !st && !cs && !ms ? 'disabled' : ''}>${ico('balance')} Отправить</button>
+    </div>`;
   return `
     <h1>Отчёт разобран</h1>${head}
     ${r.summary ? `<div class="card sweep ai-sum">${ico(TI().magic)}<span>${esc(r.summary)}</span></div>` : ''}
@@ -2056,7 +2235,7 @@ function aiResultHTML(head) {
 async function aiSend() {
   const ta = $('#ai-text');
   if (ta) ai.text = ta.value;
-  if (!ai.text.trim()) { toast('Расскажи, что ты сделал за день'); return; }
+  if (!ai.text.trim()) { toast(ai.report ? 'Расскажи, что произошло' : 'Расскажи, что ты сделал за день'); return; }
   micStop();
   ai.phase = 'loading';
   aiRender();
@@ -2070,9 +2249,14 @@ async function aiSend() {
     Object.entries(day.c || {}).forEach(([id, v]) => counterById(id) && already.push(`${counterById(id).name} +${v}`));
     (day.ms || []).forEach((id) => milestoneById(id) && already.push('веха ' + milestoneById(id).name));
   }
-  const d = parseKey(curDate);
+  const rp = ai.report;
+  const d = parseKey(rp ? rp.day : curDate);
   try {
-    const result = await AI.analyze(S, ai.text, {
+    const result = await AI.analyze(S, ai.text, rp ? {
+      dateLabel: `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`,
+      about: { name: rp.name, kind: rp.kind },
+      unlocked: [],
+    } : {
       dateLabel: `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`,
       already: already.join('; '),
       unlocked: Object.keys(milestoneDates()),
@@ -2536,6 +2720,16 @@ ${LEAGUE.invite(c)}`, 'Приглашение скопировано');
     case 'ai-send': aiSend(); break;
     case 'ai-back': ai.phase = 'input'; aiRender(); break;
     case 'ai-apply': aiApply(); break;
+    case 'rp-open': reportOpen(id, el.dataset.k); break;
+    case 'rp-day': { const ta = $('#ai-text'); if (ta) ai.text = ta.value; ai.report.day = el.dataset.k; aiRender(); break; }
+    case 'rp-send': reportSend(); break;
+    case 'rp-vote':
+      LEAGUE.vote(id, Number(el.dataset.v)).then((bd) => { SFX.play('confirm'); applyVerdicts(bd); render(false); }).catch((err) => { SFX.play('error'); toast(err.message); });
+      break;
+    case 'rp-withdraw':
+      if (!confirm('Отозвать отчёт?')) break;
+      LEAGUE.withdraw(id).then(() => render(false)).catch((err) => toast(err.message));
+      break;
     case 'ai-mic': micToggle(); break;
     case 'ai-toggle':
       ai.sel[el.dataset.k] = !ai.sel[el.dataset.k];

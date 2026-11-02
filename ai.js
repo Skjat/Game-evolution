@@ -70,8 +70,23 @@ const AI = (() => {
     return lines.join('\n');
   }
 
-  function systemPrompt(S) {
-    return `You are the game master of "Level Up", a personal RPG in which the player levels up their real life. In the evening the player tells you, in Russian and often by voice dictation (expect transcription mistakes), what they did during the day. Turn the report into game progress using only the ids from the catalogue below.
+  // Донос или похвала: рассказ другого участника лиги о игроке.
+  function aboutPrompt(about) {
+    const praise = about.kind === 'praise';
+    return `
+
+LEAGUE REPORT MODE
+This text is NOT the player's own report. It is a ${praise ? 'praise (похвала)' : 'complaint (донос)'} told by another member of the player's friends league about the player «${about.name}». The league will vote on it, and if the majority agrees, the result is added to «${about.name}»'s day.
+- Record only what the text states «${about.name}» did on the given date. Ignore anything about the narrator or other people.
+- ${praise ? 'Focus on quests, positive stats, counters and milestones.' : 'Focus on debuffs, shame counters and shame milestones; add good things only if the narrator plainly states them.'}
+- Be strict: hearsay, guesses, jokes and exaggerations do not count; when in doubt choose the smaller number or leave it out.
+- Never propose new achievements: new_counters and new_milestones must be empty.
+- summary: 1–2 sentences in Russian for the league members who will vote, third person about «${about.name}», ${praise ? 'warm and a little epic' : 'dry and ironic, like a court record'}.
+- note: one short diary sentence in Russian, third person, that states what happened.`;
+  }
+
+  function systemPrompt(S, about) {
+    return (about ? aboutPrompt(about) + '\n\n' : '') + `You are the game master of "Level Up", a personal RPG in which the player levels up their real life. In the evening the player tells you, in Russian and often by voice dictation (expect transcription mistakes), what they did during the day. Turn the report into game progress using only the ids from the catalogue below.
 
 How to fill the answer:
 - quests: activities that clearly match a quest from the catalogue, with count (usually 1). Quest stat rewards and the counters linked to a quest are added automatically — never repeat them in stats or counters.
@@ -120,6 +135,11 @@ ${catalogue(S)}`;
   }
 
   function userMessage(text, ctx) {
+    if (ctx.about) return [
+      `Дата: ${ctx.dateLabel}.`,
+      `${ctx.about.kind === 'praise' ? 'Похвала' : 'Донос'} на участника «${ctx.about.name}». Рассказ:`,
+      text.trim(),
+    ].join('\n');
     return [
       `Дата отчёта: ${ctx.dateLabel}.`,
       ctx.already ? `Уже записано за этот день (не дублируй): ${ctx.already}.` : 'За этот день ещё ничего не записано.',
@@ -297,11 +317,13 @@ ${catalogue(S)}`;
   async function analyze(S, text, ctx) {
     const c = cfg();
     if (!ready(c)) throw new AIError('ИИ не настроен.', 'config');
-    const system = systemPrompt(S);
+    const system = systemPrompt(S, ctx.about);
     const sch = schema(S);
     const user = userMessage(text, ctx);
     const raw = c.provider === 'claude' ? await callClaude(c, system, user, sch) : await callCustom(c, system, user, sch);
-    return normalize(raw, S, ctx.unlocked);
+    const out = normalize(raw, S, ctx.unlocked || []);
+    if (ctx.about) { out.newCounters = []; out.newMilestones = []; }
+    return out;
   }
 
   // Проверка связи без траты токенов: запрос информации о модели / списка моделей.

@@ -47,3 +47,30 @@ CREATE TABLE IF NOT EXISTS items (
   created_at INTEGER NOT NULL,
   PRIMARY KEY (league, id)
 );
+
+-- Суд лиги: доносы и похвалы на других участников. ИИ автора превращает рассказ в отчёт за день,
+-- лига голосует; утверждённый отчёт телефон участника добавляет в его день.
+CREATE TABLE IF NOT EXISTS proposals (
+  id          TEXT PRIMARY KEY,
+  league      TEXT NOT NULL,
+  author      TEXT NOT NULL,
+  target      TEXT NOT NULL,
+  day         TEXT NOT NULL,          -- YYYY-MM-DD
+  kind        TEXT NOT NULL,          -- 'complaint' | 'praise'
+  text        TEXT NOT NULL,          -- что рассказал автор
+  summary     TEXT NOT NULL,
+  data        TEXT NOT NULL,          -- JSON: подвиги, слабости, очки, счётчики, вехи, запись в дневник
+  status      TEXT NOT NULL,          -- 'pending' | 'approved' | 'rejected' | 'expired' | 'withdrawn'
+  applied     INTEGER NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL,
+  resolved_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS proposals_league ON proposals (league, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS votes (
+  proposal   TEXT NOT NULL,
+  member     TEXT NOT NULL,
+  vote       INTEGER NOT NULL,        -- 1 за, -1 против
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (proposal, member)
+);

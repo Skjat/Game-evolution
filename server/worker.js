@@ -26,6 +26,8 @@ const now = () => Date.now();
 const MAX_MEMBERS = 50;
 const MAX_ITEMS = 150;
 const REACTIONS = ['respect', 'lol'];
+const PROPOSAL_TTL = 7 * 864e5;      // голосование длится неделю
+const MAX_PENDING = 5;               // открытых доносов/похвал от одного автора
 
 async function sha256(s) {
   const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
@@ -72,6 +74,64 @@ async function addEvents(env, league, memberId, events) {
     .bind(league, memberId, e.kind, e.text, e.icon, t)));
 }
 
+/* ---------- Суд лиги ---------- */
+
+// Кто голосует: все, кроме того, о ком отчёт. Если в лиге только двое — решают оба.
+async function voters(env, league, target) {
+  const ids = (await env.DB.prepare('SELECT id FROM members WHERE league = ?').bind(league).all()).results.map((r) => r.id);
+  const el = ids.filter((id) => id !== target);
+  return { ids, el: el.length < 2 ? ids : el };
+}
+
+// Пересчитать статус открытого голосования. Возвращает обновлённую запись.
+async function resolve(env, p) {
+  if (p.status !== 'pending') return p;
+  const { ids, el } = await voters(env, p.league, p.target);
+  let status = 'pending';
+  if (!ids.includes(p.target) || now() - p.created_at > PROPOSAL_TTL) status = 'expired';
+  else {
+    const vs = (await env.DB.prepare('SELECT member, vote FROM votes WHERE proposal = ?').bind(p.id).all()).results.filter((v) => el.includes(v.member));
+    const yes = vs.filter((v) => v.vote > 0).length, no = vs.filter((v) => v.vote < 0).length;
+    const need = Math.floor(el.length / 2) + 1;
+    if (yes >= need) status = 'approved';
+    else if (no > el.length - need) status = 'rejected';
+  }
+  if (status === 'pending') return p;
+  await env.DB.prepare('UPDATE proposals SET status = ?, resolved_at = ? WHERE id = ? AND status = ?').bind(status, now(), p.id, 'pending').run();
+  if (status === 'approved') {
+    await addEvents(env, p.league, p.target, [{ kind: 'verdict', text: `по решению лиги (${p.kind === 'praise' ? 'похвала' : 'донос'}): ${p.summary}`, icon: p.kind === 'praise' ? 'medal' : 'balance' }]);
+  }
+  return { ...p, status, resolved_at: now() };
+}
+
+async function proposalsFor(env, me) {
+  let list = (await env.DB.prepare(
+    `SELECT p.*, a.name AS authorName, a.avatar AS authorAvatar, t.name AS targetName, t.avatar AS targetAvatar FROM proposals p
+     LEFT JOIN members a ON a.id = p.author LEFT JOIN members t ON t.id = p.target
+     WHERE p.league = ? AND (p.status = 'pending' OR p.created_at > ? OR (p.target = ? AND p.status = 'approved' AND p.applied = 0))
+     ORDER BY p.created_at DESC LIMIT 40`,
+  ).bind(me.league, now() - 14 * 864e5, me.id).all()).results;
+  list = await Promise.all(list.map((p) => resolve(env, p)));
+  if (!list.length) return [];
+  const ids = list.map((p) => p.id);
+  const vs = (await env.DB.prepare(`SELECT proposal, member, vote FROM votes WHERE proposal IN (${ids.map(() => '?').join(',')})`).bind(...ids).all()).results;
+  const out = [];
+  for (const p of list) {
+    const { el } = await voters(env, me.league, p.target);
+    const pv = vs.filter((v) => v.proposal === p.id && el.includes(v.member));
+    const mine = vs.find((v) => v.proposal === p.id && v.member === me.id);
+    out.push({
+      id: p.id, author: p.author, authorName: p.authorName || 'бывший участник', authorAvatar: p.authorAvatar,
+      target: p.target, targetName: p.targetName || 'бывший участник', targetAvatar: p.targetAvatar,
+      day: p.day, kind: p.kind, text: p.text, summary: p.summary, data: JSON.parse(p.data || '{}'),
+      status: p.status, applied: !!p.applied, created_at: p.created_at, resolved_at: p.resolved_at,
+      yes: pv.filter((v) => v.vote > 0).length, no: pv.filter((v) => v.vote < 0).length,
+      voters: el.length, need: Math.floor(el.length / 2) + 1, myVote: mine ? mine.vote : 0, canVote: el.includes(me.id),
+    });
+  }
+  return out;
+}
+
 async function board(env, me) {
   const league = await env.DB.prepare('SELECT code, name, created_at FROM leagues WHERE code = ?').bind(me.league).first();
   const members = (await env.DB.prepare('SELECT id, name, avatar, profile, updated_at, joined_at FROM members WHERE league = ? ORDER BY joined_at')
@@ -91,7 +151,8 @@ async function board(env, me) {
   const items = (await env.DB.prepare(
     'SELECT i.id, i.author, i.kind, i.data, i.created_at, m.name AS authorName FROM items i LEFT JOIN members m ON m.id = i.author WHERE i.league = ? ORDER BY i.created_at',
   ).bind(me.league).all()).results.map((i) => ({ ...i, data: JSON.parse(i.data || '{}') }));
-  return { league, me: me.id, members, feed, items, serverTime: now() };
+  const proposals = await proposalsFor(env, me);
+  return { league, me: me.id, members, feed, items, proposals, serverTime: now() };
 }
 
 async function route(req, env) {
@@ -195,10 +256,69 @@ async function route(req, env) {
     return json(await board(env, me));
   }
 
+  // Донос или похвала на другого участника — выносится на голосование лиги
+  if (path === '/api/proposals' && method === 'POST') {
+    const body = await readBody(req);
+    const kind = body.kind === 'praise' ? 'praise' : body.kind === 'complaint' ? 'complaint' : null;
+    const day = clip(body.day, 10);
+    const target = await env.DB.prepare('SELECT id, name FROM members WHERE id = ? AND league = ?').bind(clip(body.target, 40), me.league).first();
+    if (!kind || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return fail('Неверный отчёт');
+    if (!target) return fail('Такого участника нет в лиге', 404);
+    if (target.id === me.id) return fail('На себя доносить нельзя — для этого есть свой отчёт');
+    const text = clip(body.text, 1500), summary = clip(body.summary, 300);
+    if (!text || !summary) return fail('Пустой отчёт');
+    const data = JSON.stringify(body.data && typeof body.data === 'object' && !Array.isArray(body.data) ? body.data : {});
+    if (data.length > 8000) return fail('Отчёт слишком большой');
+    const open = await env.DB.prepare("SELECT COUNT(*) AS n FROM proposals WHERE author = ? AND status = 'pending'").bind(me.id).first();
+    if (open.n >= MAX_PENDING) return fail(`У тебя уже ${MAX_PENDING} открытых голосований — дождись решения`, 429);
+    const id = crypto.randomUUID();
+    const t = now();
+    await env.DB.batch([
+      env.DB.prepare('INSERT INTO proposals (id, league, author, target, day, kind, text, summary, data, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(id, me.league, me.id, target.id, day, kind, text, summary, data, 'pending', t),
+      env.DB.prepare('INSERT INTO votes (proposal, member, vote, created_at) VALUES (?, ?, 1, ?)').bind(id, me.id, t),
+    ]);
+    await addEvents(env, me.league, me.id, [{ kind: 'report', text: `${kind === 'praise' ? 'похвалил' : 'донёс'}: ${target.name} — ${summary}`, icon: kind === 'praise' ? 'medal' : 'skull' }]);
+    const p = await env.DB.prepare('SELECT * FROM proposals WHERE id = ?').bind(id).first();
+    await resolve(env, p);
+    return json(await board(env, me));
+  }
+
+  // Голос: 1 — за, -1 — против, 0 — снять голос
+  if (path === '/api/proposals/vote' && method === 'POST') {
+    const body = await readBody(req);
+    const p = await env.DB.prepare('SELECT * FROM proposals WHERE id = ? AND league = ?').bind(clip(body.id, 40), me.league).first();
+    if (!p) return fail('Голосование не найдено', 404);
+    const cur = await resolve(env, p);
+    if (cur.status !== 'pending') return fail('Голосование уже закрыто', 409);
+    const { el } = await voters(env, me.league, p.target);
+    if (!el.includes(me.id)) return fail('Ты не голосуешь по отчёту о себе');
+    const vote = Number(body.vote) > 0 ? 1 : Number(body.vote) < 0 ? -1 : 0;
+    if (vote) await env.DB.prepare('INSERT OR REPLACE INTO votes (proposal, member, vote, created_at) VALUES (?, ?, ?, ?)').bind(p.id, me.id, vote, now()).run();
+    else await env.DB.prepare('DELETE FROM votes WHERE proposal = ? AND member = ?').bind(p.id, me.id).run();
+    await resolve(env, p);
+    return json(await board(env, me));
+  }
+
+  // Автор отзывает свой донос, пока идёт голосование
+  if (path === '/api/proposals/withdraw' && method === 'POST') {
+    const body = await readBody(req);
+    await env.DB.prepare("UPDATE proposals SET status = 'withdrawn', resolved_at = ? WHERE id = ? AND author = ? AND status = 'pending'").bind(now(), clip(body.id, 40), me.id).run();
+    return json(await board(env, me));
+  }
+
+  // Телефон участника добавил утверждённый отчёт в его день
+  if (path === '/api/proposals/applied' && method === 'POST') {
+    const body = await readBody(req);
+    await env.DB.prepare("UPDATE proposals SET applied = 1 WHERE id = ? AND target = ? AND status = 'approved'").bind(clip(body.id, 40), me.id).run();
+    return json({ ok: true });
+  }
+
   // Покинуть лигу
   if (path === '/api/leave' && method === 'POST') {
     await env.DB.batch([
       env.DB.prepare('DELETE FROM reactions WHERE member = ?').bind(me.id),
+      env.DB.prepare('DELETE FROM votes WHERE member = ?').bind(me.id),
       env.DB.prepare('INSERT INTO events (league, member, kind, text, icon, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(me.league, null, 'leave', `${me.name} покинул лигу`, 'arrowDown', now()),
       env.DB.prepare('DELETE FROM members WHERE id = ?').bind(me.id),
     ]);

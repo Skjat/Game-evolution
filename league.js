@@ -104,6 +104,24 @@ const LEAGUE = (() => {
     return board;
   }
 
+  // Суд лиги: доносы и похвалы
+  async function propose(target, day, kind, text, summary, data) {
+    const board = await api('/api/proposals', { method: 'POST', body: { target, day, kind, text, summary, data } });
+    set({ board });
+    return board;
+  }
+  async function vote(id, v) {
+    const board = await api('/api/proposals/vote', { method: 'POST', body: { id, vote: v } });
+    set({ board });
+    return board;
+  }
+  async function withdraw(id) {
+    const board = await api('/api/proposals/withdraw', { method: 'POST', body: { id } });
+    set({ board });
+    return board;
+  }
+  const markApplied = (id) => api('/api/proposals/applied', { method: 'POST', body: { id } });
+
   async function leave() {
     try { await api('/api/leave', { method: 'POST' }); }
     catch (e) { if (e.status && e.status !== 401) throw e; }
@@ -133,5 +151,5 @@ const LEAGUE = (() => {
     return set({ server: d.s, code: d.c, name: d.n, memberId: d.i, token: d.t, board: null, outbox: [], error: '', lastSync: 0 });
   }
 
-  return { cfg, set, joined, normServer, host, parseInvite, invite, create, join, sync, refresh, react, share, unshare, leave, push, recoveryCode, restore };
+  return { cfg, set, joined, normServer, host, parseInvite, invite, create, join, sync, refresh, react, share, unshare, propose, vote, withdraw, markApplied, leave, push, recoveryCode, restore };
 })();
