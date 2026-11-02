@@ -6,7 +6,7 @@
    ===================================================================== */
 
 const STORAGE_KEY = 'lvlup.v1';
-const APP_VERSION = 18;   // совпадает с номером в sw.js (lvlup-vN)
+const APP_VERSION = 19;   // совпадает с номером в sw.js (lvlup-vN)
 const QUEST_MAX_REWARD = 5;   // максимум очков подвига в один параметр
 const QUEST_DAY_LIMIT = 3;    // один подвиг — не больше 3 раз за день
 const DATA_VERSION = 5;
@@ -1381,7 +1381,7 @@ async function syncNow() {
     if (applySharedItems(board) && tab === 'ach') render(false);
     applyVerdicts(board);
   } catch (e) {
-    LEAGUE.set({ error: e.status === 401 ? 'Сервер больше не узнаёт тебя: восстанови доступ кодом или вступи заново' : e.message });
+    LEAGUE.set({ error: e.status === 401 ? 'Тебя нет в этой лиге: тебя исключили или доступ потерян. Покинь лигу и вступи заново по приглашению или восстанови доступ кодом' : e.message });
   }
   syncing = false;
   if ($('#sheet').classList.contains('hidden') && (tab === 'league' || courtWaiting())) render(false);
@@ -1612,7 +1612,13 @@ function courtHTML(b, urgent) {
         <span class="ok">за ${p.yes}</span><span class="err">против ${p.no}</span>
         <span class="muted">${pending ? `нужно ${p.need} из ${p.voters}` : VERDICT_STATUS[p.status] || p.status}</span>
       </div>
-      ${pending && p.canVote ? `<div class="row" style="margin-top:10px">
+      ${p.eligible ? `<div class="cvoters">${p.eligible.map((id) => {
+        const v = (p.votes || []).find((x) => x.m === id), mem = (b.members || []).find((x) => x.id === id);
+        const nm = mem ? mem.name : '—', cls = v ? (v.v > 0 ? 'ok' : 'err') : 'muted';
+        return `<span class="${cls}">${esc(nm)}${id === me ? ' (ты)' : ''}: ${v ? (v.v > 0 ? 'за' : 'против') : pending ? 'ждём' : 'не голосовал'}</span>`;
+      }).join('')}</div>` : ''}
+      ${pending && p.author === me ? '<div class="small muted" style="margin-top:6px">Ты автор — твой голос «за» засчитан сразу. Ждём остальных.</div>' : ''}
+      ${pending && p.canVote && p.author !== me ? `<div class="row" style="margin-top:10px">
         <button class="btn grow sm ${p.myVote > 0 ? 'primary' : ''}" data-act="rp-vote" data-id="${p.id}" data-v="${p.myVote > 0 ? 0 : 1}">${ico('check')} За</button>
         <button class="btn grow sm ${p.myVote < 0 ? 'danger' : ''}" data-act="rp-vote" data-id="${p.id}" data-v="${p.myVote < 0 ? 0 : -1}">✕ Против</button>
       </div>` : pending && p.target === me ? '<div class="small muted" style="margin-top:8px">Отчёт о тебе — решают остальные участники.</div>' : ''}
@@ -1687,7 +1693,8 @@ function memberSheet(id) {
       <button class="btn grow danger" data-act="rp-open" data-id="${m.id}" data-k="complaint">${ico('balance')} Донести</button>
     </div>
     <div class="small muted" style="margin-top:8px">ИИ составит отчёт за день, лига проголосует. При большинстве «за» он добавится в день ${esc(m.name)}.</div>` : ''}
-    <div class="sx" style="margin-top:12px;text-align:center">обновлено ${timeAgo(m.updated_at)} · ${(p.app || 0) >= APP_VERSION ? 'версия ' + p.app : `<span class="tox">старая версия приложения${p.app ? ' ' + p.app : ''} — пусть перезапустит</span>`}</div>
+    ${b.owner === b.me && m.id !== b.me ? `<button class="btn block sm danger" style="margin-top:16px" data-act="lg-kick" data-id="${m.id}">Исключить из лиги</button>` : ''}
+    <div class="sx" style="margin-top:12px;text-align:center">${b.owner === m.id ? 'основатель лиги · ' : ''}обновлено ${timeAgo(m.updated_at)} · ${(p.app || 0) >= APP_VERSION ? 'версия ' + p.app : `<span class="tox">старая версия приложения${p.app ? ' ' + p.app : ''} — пусть перезапустит</span>`}</div>
   `);
 }
 
@@ -2733,6 +2740,13 @@ ${LEAGUE.invite(c)}`, 'Приглашение скопировано');
     case 'rp-vote':
       LEAGUE.vote(id, Number(el.dataset.v)).then((bd) => { SFX.play('confirm'); applyVerdicts(bd); render(false); }).catch((err) => { SFX.play('error'); toast(err.message); });
       break;
+    case 'lg-kick': {
+      const b = LEAGUE.cfg().board, m = b && b.members.find((x) => x.id === id);
+      if (!m || !confirm(`Исключить ${m.name} из лиги? Его прогресс на его телефоне останется, но в лиге он пропадёт.`)) break;
+      LEAGUE.kick(id).then(() => { closeSheet(); toast(`${m.name} исключён из лиги`, 'gold', 'users'); SFX.play('confirm'); render(false); })
+        .catch((err) => { SFX.play('error'); toast(err.message); });
+      break;
+    }
     case 'rp-withdraw':
       if (!confirm('Отозвать отчёт?')) break;
       LEAGUE.withdraw(id).then(() => render(false)).catch((err) => toast(err.message));

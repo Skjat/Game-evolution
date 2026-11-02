@@ -120,6 +120,11 @@ const LEAGUE = (() => {
     set({ board });
     return board;
   }
+  async function kick(id) {
+    const board = await api('/api/kick', { method: 'POST', body: { id } });
+    set({ board });
+    return board;
+  }
   const markApplied = (id) => api('/api/proposals/applied', { method: 'POST', body: { id } });
 
   async function leave() {
@@ -151,5 +156,5 @@ const LEAGUE = (() => {
     return set({ server: d.s, code: d.c, name: d.n, memberId: d.i, token: d.t, board: null, outbox: [], error: '', lastSync: 0 });
   }
 
-  return { cfg, set, joined, normServer, host, parseInvite, invite, create, join, sync, refresh, react, share, unshare, propose, vote, withdraw, markApplied, leave, push, recoveryCode, restore };
+  return { cfg, set, joined, normServer, host, parseInvite, invite, create, join, sync, refresh, react, share, unshare, propose, vote, withdraw, markApplied, kick, leave, push, recoveryCode, restore };
 })();

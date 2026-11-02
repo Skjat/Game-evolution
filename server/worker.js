@@ -127,6 +127,7 @@ async function proposalsFor(env, me) {
       status: p.status, applied: !!p.applied, created_at: p.created_at, resolved_at: p.resolved_at,
       yes: pv.filter((v) => v.vote > 0).length, no: pv.filter((v) => v.vote < 0).length,
       voters: el.length, need: Math.floor(el.length / 2) + 1, myVote: mine ? mine.vote : 0, canVote: el.includes(me.id),
+      eligible: el, votes: pv.map((v) => ({ m: v.member, v: v.vote })),
     });
   }
   return out;
@@ -152,7 +153,9 @@ async function board(env, me) {
     'SELECT i.id, i.author, i.kind, i.data, i.created_at, m.name AS authorName FROM items i LEFT JOIN members m ON m.id = i.author WHERE i.league = ? ORDER BY i.created_at',
   ).bind(me.league).all()).results.map((i) => ({ ...i, data: JSON.parse(i.data || '{}') }));
   const proposals = await proposalsFor(env, me);
-  return { league, me: me.id, members, feed, items, proposals, serverTime: now() };
+  // Основатель — самый давний участник (создатель лиги; если он ушёл — следующий по стажу).
+  const owner = members.length ? members[0].id : null;
+  return { league, me: me.id, owner, members, feed, items, proposals, serverTime: now() };
 }
 
 async function route(req, env) {
@@ -312,6 +315,23 @@ async function route(req, env) {
     const body = await readBody(req);
     await env.DB.prepare("UPDATE proposals SET applied = 1 WHERE id = ? AND target = ? AND status = 'approved'").bind(clip(body.id, 40), me.id).run();
     return json({ ok: true });
+  }
+
+  // Основатель исключает участника
+  if (path === '/api/kick' && method === 'POST') {
+    const body = await readBody(req);
+    const first = await env.DB.prepare('SELECT id FROM members WHERE league = ? ORDER BY joined_at LIMIT 1').bind(me.league).first();
+    if (!first || first.id !== me.id) return fail('Исключать участников может только основатель лиги', 403);
+    const t = await env.DB.prepare('SELECT id, name FROM members WHERE id = ? AND league = ?').bind(clip(body.id, 40), me.league).first();
+    if (!t) return fail('Такого участника нет в лиге', 404);
+    if (t.id === me.id) return fail('Себя исключить нельзя — можно покинуть лигу');
+    await env.DB.batch([
+      env.DB.prepare('DELETE FROM reactions WHERE member = ?').bind(t.id),
+      env.DB.prepare('DELETE FROM votes WHERE member = ?').bind(t.id),
+      env.DB.prepare('INSERT INTO events (league, member, kind, text, icon, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(me.league, me.id, 'kick', `исключил из лиги: ${t.name}`, 'arrowDown', now()),
+      env.DB.prepare('DELETE FROM members WHERE id = ?').bind(t.id),
+    ]);
+    return json(await board(env, me));
   }
 
   // Покинуть лигу
