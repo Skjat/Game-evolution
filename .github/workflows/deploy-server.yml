@@ -73,3 +73,19 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "Адрес для приложения: **${URL:-смотри лог шага «Развернуть Worker»}**" >> "$GITHUB_STEP_SUMMARY"
           echo "Адрес сервера: ${URL}"
+          echo "URL=${URL}" >> "$GITHUB_ENV"
+
+      - name: Проверить сервер (как приложение на телефоне)
+        run: |
+          sleep 5
+          echo "--- GET /api/health"
+          curl -sS -m 20 -i "$URL/api/health" || true
+          echo
+          echo "--- CORS preflight, как у Safari"
+          curl -sS -m 20 -i -X OPTIONS "$URL/api/league" \
+            -H "Origin: https://skjat.github.io" \
+            -H "Access-Control-Request-Method: POST" \
+            -H "Access-Control-Request-Headers: content-type" || true
+          echo
+          echo "--- POST без данных (ожидается JSON-ответ сервера)"
+          curl -sS -m 20 -i -X POST "$URL/api/join" -H "Origin: https://skjat.github.io" -H "content-type: application/json" -d '{"code":"TEST-TEST"}' || true
