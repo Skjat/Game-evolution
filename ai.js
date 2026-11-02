@@ -61,7 +61,9 @@ const AI = (() => {
     S.stats.forEach((s) => lines.push(`- ${s.id} — ${s.name}`));
     lines.push('', 'QUESTS (id — name | stat rewards | counters added automatically):');
     S.quests.forEach((q) => lines.push(`- ${q.id} — ${q.name} | ${fmtRewards(q.rewards, S.stats)} | ${Object.entries(q.c || {}).map(([k, v]) => `${k} +${v}`).join(', ') || '—'}`));
-    lines.push('', 'COUNTERS (id — name, unit | sphere | what counts, for counters the player created):');
+    lines.push('', 'DEBUFFS — harmful actions (id — name | stat penalties | counters added automatically):');
+    (S.debuffs || []).forEach((q) => lines.push(`- ${q.id} — ${q.name} | ${fmtRewards(q.rewards, S.stats)} | ${Object.entries(q.c || {}).map(([k, v]) => `${k} +${v}`).join(', ') || '—'}`));
+    lines.push('', 'COUNTERS (id — name, unit | sphere | what counts, for counters the player created). Sphere "shame" = bad-habit counters:');
     counterList(S).forEach((c) => lines.push(`- ${c.id} — ${c.name}, ${c.unit} | ${c.sphere}${c.custom ? ' | player-made' + (c.desc ? ': ' + c.desc : '') : ''}`));
     lines.push('', 'MILESTONES (id — name: description):');
     milestoneList(S).forEach((m) => lines.push(`- ${m.id} — ${m.name}: ${m.desc || m.name}${m.custom ? ' (player-made)' : ''}`));
@@ -73,10 +75,11 @@ const AI = (() => {
 
 How to fill the answer:
 - quests: activities that clearly match a quest from the catalogue, with count (usually 1). Quest stat rewards and the counters linked to a quest are added automatically — never repeat them in stats or counters.
-- stats: extra points for meaningful effort that no quest covers. Usually 1–3 points, up to 5 for an exceptional effort. Nothing for passive or trivial things. Give a short reason in Russian.
-- counters: increments of lifetime counters in the counter's unit (km, hours, pieces). Count only what the player states or what clearly follows from it: "пробежал 7 км" → run_km 7; "дочитал книгу" → books 1; "позанимался английским" → lang 1. Skip counters already added by the chosen quests. Give a short reason in Russian.
+- debuffs: harmful things the player admits doing that match a debuff from the catalogue (junk food, alcohol, skipped workout, hours lost in the phone…), with count. Their penalties and shame counters are applied automatically — never repeat them in stats or counters.
+- stats: extra points for meaningful effort that no quest covers. Usually 1–3 points, up to 5 for an exceptional effort. Nothing for passive or trivial things. Harmful behaviour that no debuff covers gets negative points, and a penalty is twice as heavy as the reward for the comparable good action (for example −2 to −10). Give a short reason in Russian.
+- counters: increments of lifetime counters in the counter's unit (km, hours, pieces). Count only what the player states or what clearly follows from it: "пробежал 7 км" → run_km 7; "дочитал книгу" → books 1; "позанимался английским" → lang 1. Bad habits go to "shame" counters ("зависал в тиктоке 3 часа" → doomscroll 3). Skip counters already added by the chosen quests or debuffs. Give a short reason in Russian.
 - milestones: one-time life achievements, only when the player clearly accomplished one today and it is not in the list of already unlocked milestones. Give a short reason in Russian.
-- summary: 1–2 sentences in Russian addressed to the player as «ты», in an energetic game-master voice; highlight the best of the day. Praise only what was actually done.
+- summary: 1–2 sentences in Russian addressed to the player as «ты», in an energetic game-master voice; highlight the best of the day. Praise only what was actually done; if the player slipped, call it out with sharp sarcasm.
 - note: a short diary entry in Russian, first person, 1–3 sentences, faithful to the report.
 
 Record only what the player says they did on this day; never invent activities, and when something is vague, choose the smaller number. If the report contains nothing relevant, return empty lists and say so in the summary.
@@ -91,6 +94,7 @@ ${catalogue(S)}`;
     return obj({
       summary: { type: 'string' },
       quests: { type: 'array', items: obj({ id: idField(S.quests.map((q) => q.id)), count: { type: 'integer' } }) },
+      debuffs: { type: 'array', items: obj({ id: idField((S.debuffs || []).map((q) => q.id)), count: { type: 'integer' } }) },
       stats: { type: 'array', items: obj({ id: idField(S.stats.map((s) => s.id)), points: { type: 'integer' }, reason: { type: 'string' } }) },
       counters: { type: 'array', items: obj({ id: idField(counterList(S).map((c) => c.id)), amount: { type: 'number' }, reason: { type: 'string' } }) },
       milestones: { type: 'array', items: obj({ id: idField(milestoneList(S).map((m) => m.id)), reason: { type: 'string' } }) },
@@ -115,7 +119,14 @@ ${catalogue(S)}`;
     const r = raw && typeof raw === 'object' ? raw : {};
     const str = (v, max = 600) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
     const arr = (v) => (Array.isArray(v) ? v : []);
-    const out = { summary: str(r.summary, 400), note: str(r.note, 1000), quests: [], stats: [], counters: [], milestones: [] };
+    const out = { summary: str(r.summary, 400), note: str(r.note, 1000), quests: [], debuffs: [], stats: [], counters: [], milestones: [] };
+
+    const bMap = {};
+    arr(r.debuffs).forEach((x) => {
+      if (!x || !(S.debuffs || []).find((q) => q.id === x.id)) return;
+      bMap[x.id] = Math.min(5, (bMap[x.id] || 0) + Math.max(1, Math.round(Number(x.count) || 1)));
+    });
+    out.debuffs = Object.entries(bMap).map(([id, count]) => ({ id, count }));
 
     const qMap = {};
     arr(r.quests).forEach((x) => {
@@ -130,7 +141,7 @@ ${catalogue(S)}`;
       const p = Math.round(Number(x.points) || 0);
       if (!p) return;
       const prev = sMap[x.id];
-      sMap[x.id] = { id: x.id, points: Math.max(-5, Math.min(10, (prev ? prev.points : 0) + p)), reason: [prev && prev.reason, str(x.reason, 160)].filter(Boolean).join('; ') };
+      sMap[x.id] = { id: x.id, points: Math.max(-10, Math.min(10, (prev ? prev.points : 0) + p)), reason: [prev && prev.reason, str(x.reason, 160)].filter(Boolean).join('; ') };
     });
     out.stats = Object.values(sMap);
 

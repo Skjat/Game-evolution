@@ -113,6 +113,21 @@ const SFX = (() => {
         tone({ type: 'sine', f0: f, dur: 0.55, vol: 0.05, at: i * 0.07, detune: 12 });
       });
     },
+    // Штраф: «провал» — сползающий вниз «ва-ва» с хрипом
+    fail() {
+      tone({ type: 'sawtooth', f0: 330, f1: 300, dur: 0.22, vol: 0.12, lp: 1400, q: 3 });
+      tone({ type: 'sawtooth', f0: 290, f1: 250, dur: 0.22, vol: 0.12, lp: 1300, q: 3, at: 0.22 });
+      tone({ type: 'sawtooth', f0: 250, f1: 120, dur: 0.55, vol: 0.13, lp: 1200, lp1: 300, q: 4, at: 0.44 });
+      tone({ type: 'square', f0: 70, f1: 45, dur: 0.35, vol: 0.12, lp: 300 });
+      noise({ dur: 0.25, vol: 0.08, type: 'lowpass', f0: 1200, f1: 200 });
+    },
+    // Потеря уровня: обрушение
+    degrade() {
+      tone({ type: 'sawtooth', f0: 900, f1: 60, dur: 1.1, vol: 0.12, lp: 3000, lp1: 200, q: 5 });
+      tone({ type: 'sine', f0: 90, f1: 28, dur: 1.3, vol: 0.45 });
+      noise({ dur: 1.2, vol: 0.25, type: 'lowpass', f0: 2500, f1: 80, q: 0.7, attack: 0.005 });
+      [311, 262, 233, 196].forEach((f, i) => tone({ type: 'triangle', f0: f, f1: f * 0.97, dur: 0.7, vol: 0.08, at: 0.5 + i * 0.16 }));
+    },
     // ИИ анализирует отчёт: поток данных
     scan() {
       for (let i = 0; i < 9; i++) tone({ type: 'square', f0: 600 + Math.random() * 1600, dur: 0.035, vol: 0.035, at: i * 0.055, lp: 3000 });

@@ -487,6 +487,66 @@ input[type=password]:focus { border-color: var(--or); }
 .tier-row { display: grid; grid-template-columns: 84px 1fr 40px; gap: 8px; margin-bottom: 8px; }
 .tier-row input { padding: 10px; }
 
+/* ---------- Слабости, штрафы, позор ---------- */
+:root { --tox: #9dff3a; }
+h2.bad-h { color: var(--tox); }
+h2.bad-h::before, h2.bad-h::after { background: linear-gradient(90deg, transparent, rgba(157, 255, 58, .45), transparent); }
+.quest.debuff { background: linear-gradient(180deg, rgba(20, 30, 8, .8), rgba(8, 10, 3, .9)); border-color: rgba(157, 255, 58, .2); }
+.quest.debuff .qi { color: var(--tox); filter: drop-shadow(0 0 5px rgba(157, 255, 58, .6)); }
+.quest.debuff .qc { background: var(--tox); color: #0a1400; box-shadow: 0 0 12px rgba(157, 255, 58, .7); }
+.quest.debuff.done { border-color: rgba(157, 255, 58, .6); box-shadow: 0 0 16px rgba(157, 255, 58, .2), inset 0 0 20px rgba(157, 255, 58, .08); }
+.quest.debuff.hit::after { background: radial-gradient(circle, rgba(200, 255, 150, .5), rgba(157, 255, 58, .2) 40%, transparent 70%); }
+.card.bad-card { border-color: rgba(157, 255, 58, .25); }
+.card.bad-card::before { background: linear-gradient(90deg, transparent, #c8ff9a 30%, #fff 50%, #c8ff9a 70%, transparent); box-shadow: 0 0 6px var(--tox); }
+.done-item.bad .qi { color: var(--tox); }
+.ic.bad { color: var(--tox) !important; }
+.daytotal.neg { background: linear-gradient(180deg, #f4ffe8, var(--tox) 55%, #4c8a00); -webkit-background-clip: text; background-clip: text; filter: drop-shadow(0 0 14px rgba(157, 255, 58, .6)); }
+.lossline { display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; font: 600 12px var(--mono); color: var(--tox); }
+.lossline svg.i { width: 14px; height: 14px; }
+.bigxp.neg { color: var(--tox); text-shadow: 0 0 12px rgba(157, 255, 58, .6); }
+.toast.shame { border-color: rgba(157, 255, 58, .7); box-shadow: 0 10px 30px rgba(0, 0, 0, .5), 0 0 24px rgba(157, 255, 58, .4); }
+.toast.shame svg.i { color: var(--tox); }
+.toast.shame::after { background: linear-gradient(90deg, #4c8a00, var(--tox)); box-shadow: 0 0 8px var(--tox); }
+.sp.shame svg.i { color: var(--tox); }
+.chain.shame { border-color: rgba(157, 255, 58, .22); background: linear-gradient(180deg, rgba(16, 24, 6, .82), rgba(6, 8, 2, .9)); }
+.chain.shame::before { background: linear-gradient(90deg, transparent, #c8ff9a 30%, #fff 50%, #c8ff9a 70%, transparent); box-shadow: 0 0 6px var(--tox); }
+.chain.shame .icon-btn { color: var(--tox); border-color: rgba(157, 255, 58, .35); background: rgba(157, 255, 58, .06); }
+.shame-intro { display: flex; gap: 12px; align-items: center; border-color: rgba(157, 255, 58, .3); }
+.shame-intro > svg.i { width: 36px; height: 36px; color: var(--tox); filter: drop-shadow(0 0 8px var(--tox)); }
+.shamecount { display: inline-flex; align-items: center; gap: 6px; font: 900 18px var(--head); color: var(--tox); text-shadow: 0 0 10px rgba(157, 255, 58, .6); }
+.shamecount svg.i { width: 18px; height: 18px; }
+
+/* Удар: красно-ядовитая вспышка по краям и тряска */
+body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 44; opacity: 0;
+  background: radial-gradient(ellipse at center, transparent 45%, rgba(157, 255, 58, .25) 75%, rgba(255, 31, 61, .55) 100%); }
+body.hurt::after { animation: hurtflash .6s ease-out; }
+body.hurt #view { animation: shake .45s cubic-bezier(.36, .07, .19, .97); }
+@keyframes hurtflash { 0% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes shake { 10%, 90% { transform: translateX(-2px); } 20%, 80% { transform: translateX(4px); } 30%, 50%, 70% { transform: translateX(-7px); } 40%, 60% { transform: translateX(7px); } }
+.crack { width: 24px; height: 24px; margin: -12px 0 0 -12px; border-radius: 50%; border: 2px solid var(--tox); box-shadow: 0 0 14px var(--tox), inset 0 0 10px rgba(255, 31, 61, .8); animation: implode .6s ease-in forwards; }
+@keyframes implode { from { transform: scale(5); opacity: 0; } 40% { opacity: 1; } to { transform: scale(.2); opacity: 0; } }
+.float.sink { animation: sinkdown 1.25s cubic-bezier(.3, .6, .4, 1) forwards; }
+@keyframes sinkdown { 0% { opacity: 0; transform: translate(-50%, -120%) scale(1.4); } 15% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); } 100% { opacity: 0; transform: translate(-50%, 160%) scale(.9); } }
+
+/* Деградация: тёмный экран, обломки падают вниз */
+.lu.down { background: radial-gradient(circle at 50% 45%, rgba(10, 24, 4, .9), rgba(1, 2, 0, .96) 70%); }
+.lu.down .flash { background: radial-gradient(circle at 50% 42%, rgba(220, 255, 200, .9), rgba(157, 255, 58, .45) 25%, rgba(255, 31, 61, .35) 50%, transparent 70%); }
+.lu.down .debris { position: absolute; inset: 0; pointer-events: none; }
+.lu.down .debris b { position: absolute; top: -20px; width: var(--w); height: calc(var(--w) * 3); background: linear-gradient(180deg, transparent, var(--tox)); opacity: 0; animation: fallDown var(--t) linear var(--dl) forwards; box-shadow: 0 0 6px var(--tox); }
+@keyframes fallDown { 0% { transform: translateY(0); opacity: 0; } 10% { opacity: .9; } 100% { transform: translateY(105vh); opacity: 0; } }
+.lu.down .box { border-color: rgba(157, 255, 58, .5); background: linear-gradient(180deg, rgba(14, 26, 6, .92), rgba(3, 6, 1, .96)); box-shadow: 0 0 40px rgba(157, 255, 58, .25), inset 0 0 30px rgba(157, 255, 58, .1); animation: dropIn .8s .1s cubic-bezier(.3, 1.3, .5, 1) both; }
+.lu.down .box::before { background: linear-gradient(90deg, transparent, #c8ff9a 30%, #fff 50%, #c8ff9a 70%, transparent); box-shadow: 0 0 10px var(--tox); }
+@keyframes dropIn { from { opacity: 0; transform: translateY(-80px) rotate(-3deg); } }
+.lu.down .dcore { width: 84px; height: 84px; margin: 0 auto; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #0a1400;
+  background: radial-gradient(circle, #f4ffe8 0%, var(--tox) 40%, #2c5200 75%, #050a00 100%); box-shadow: 0 0 30px rgba(157, 255, 58, .6); animation: sinkcore 1.4s ease-in-out infinite; }
+.lu.down .dcore svg.i { width: 40px; height: 40px; stroke-width: 2.4; }
+@keyframes sinkcore { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(6px); } }
+.lu.down .t { background: linear-gradient(180deg, #f4ffe8, var(--tox) 50%, #4c8a00); -webkit-background-clip: text; background-clip: text; filter: drop-shadow(0 0 12px rgba(157, 255, 58, .8)); }
+.lu.down .lv { color: var(--tox); text-shadow: 0 0 16px var(--tox); font-size: 40px; }
+.lu.down .lt { color: #c8ff9a; }
+.lu.down .ups .arrow { color: var(--tox); }
+.btn.shamebtn { border: 1px solid var(--tox); color: var(--tox); background: rgba(157, 255, 58, .08); box-shadow: 0 0 16px rgba(157, 255, 58, .25); }
+
 /* Уважение к настройке «Уменьшить движение» */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }

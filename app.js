@@ -6,7 +6,7 @@
    ===================================================================== */
 
 const STORAGE_KEY = 'lvlup.v1';
-const DATA_VERSION = 3;
+const DATA_VERSION = 4;
 
 /* ---------------------- Иконки (SVG, 24×24, линии) ---------------------- */
 
@@ -75,11 +75,19 @@ const ICONS = {
   plane: '<path d="M2 13l8-1 4-8h2l-1 8 6 1v2l-6 1 1 4h-2l-4-4-8-1z"/>',
   sparkle: '<path d="M12 2l2 7 7 3-7 3-2 7-2-7-7-3 7-3z"/>',
   check: '<path d="M4 12l5 5L20 6"/>',
+  burger: '<path d="M4 10a8 5.5 0 0 1 16 0z M3 13h18 M4 16h16v1a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3z M9 7h.01M13 6h.01M15 8h.01"/>',
+  candy: '<circle cx="12" cy="12" r="4"/><path d="M8.5 10L4 7l1 5-1 5 4.5-3M15.5 10L20 7l-1 5 1 5-4.5-3"/>',
+  bottle: '<path d="M10 2h4v4l2 3v13H8V9l2-3z M8 13h8"/>',
+  cigarette: '<path d="M2 15h14v4H2z M16 15h2v4h-2 M20 15v4 M18 11c0-2 2-2 2-4s-2-2-2-4"/>',
+  couch: '<path d="M4 11V8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3 M2 13a2 2 0 0 1 4 0v2h12v-2a2 2 0 0 1 4 0v5H2z M4 18v2M20 18v2"/>',
+  cart: '<path d="M3 4h2l3 11h10l3-8H6.5"/><circle cx="9" cy="20" r="1.3"/><circle cx="17" cy="20" r="1.3"/>',
+  arrowDown: '<path d="M12 4v16M5 13l7 7 7-7"/>',
 };
 const ICON_CHOICES = ['sword', 'swift', 'shield', 'hex', 'eye', 'crown', 'flame', 'bolt', 'star', 'gem', 'atom', 'moon', 'sun',
   'dumbbell', 'wind', 'lotus', 'ball', 'book', 'cap', 'candle', 'link', 'mic', 'leaf', 'heart', 'brush', 'note', 'coin',
   'target', 'rocket', 'compass', 'globe', 'pen', 'home', 'skull', 'claw', 'seed', 'mountain', 'bike', 'swim', 'drop',
-  'chat', 'users', 'hourglass', 'briefcase', 'wallet', 'pot', 'phoneOff', 'tree', 'gift', 'camera', 'plane', 'sparkle'];
+  'chat', 'users', 'hourglass', 'briefcase', 'wallet', 'pot', 'phoneOff', 'tree', 'gift', 'camera', 'plane', 'sparkle',
+  'burger', 'candy', 'bottle', 'cigarette', 'couch', 'cart'];
 const AVATAR_CHOICES = ['reactor', 'flame', 'skull', 'eye', 'crown', 'sword', 'star', 'moon', 'claw', 'atom', 'gem', 'bolt'];
 
 const ico = (k, cls = '') => ICONS[k]
@@ -160,6 +168,7 @@ function defaultState() {
     profile: { name: 'Герой', avatar: 'reactor' },
     stats: clone(DEFAULT_STATS),
     quests: DEFAULT_QUESTS.map((q) => ({ ...clone(q), c: { ...(QUEST_COUNTERS[q.id] || {}) } })),
+    debuffs: clone(DEFAULT_DEBUFFS),   // слабости: вредные действия со штрафом
     // 'YYYY-MM-DD' -> { m: {statId: очки}, d: [{q, n, i, r, c}], c: {counterId: n}, ms: [milestoneId], note }
     log: {},
     ach: {},   // achievementId -> dateKey
@@ -194,6 +203,7 @@ function migrate(s) {
     for (const q of s.quests || []) if (!q.c) q.c = { ...(QUEST_COUNTERS[q.id] || {}) };
     for (const k in s.log || {}) for (const x of s.log[k].d || []) if (!x.c) x.c = { ...(QUEST_COUNTERS[x.q] || {}) };
   }
+  if (v < 4 && !Array.isArray(s.debuffs)) s.debuffs = clone(DEFAULT_DEBUFFS);
   s.settings = Object.assign({ sound: true }, s.settings || {});
   s.custom = Object.assign({ counters: [], milestones: [] }, s.custom || {});
   s.v = DATA_VERSION;
@@ -237,6 +247,7 @@ function ensureDay(k) {
   const d = S.log[k];
   if (!d.c) d.c = {};
   if (!d.ms) d.ms = [];
+  if (!d.b) d.b = [];
   return d;
 }
 function dayPoints(day) {
@@ -244,14 +255,27 @@ function dayPoints(day) {
   if (!day) return p;
   for (const id in day.m) p[id] = (p[id] || 0) + day.m[id];
   for (const x of day.d || []) for (const id in x.r) p[id] = (p[id] || 0) + x.r[id];
+  for (const x of day.b || []) for (const id in x.r) p[id] = (p[id] || 0) + x.r[id];
   return p;
 }
 function dayTotal(day) {
   const p = dayPoints(day);
   return S.stats.reduce((s, st) => s + (p[st.id] || 0), 0);
 }
+// День засчитывается в серию только за полезное: подвиги, плюсы, полезные счётчики, вехи. Слабости не в счёт.
 function isActive(day) {
-  return !!day && ((day.d && day.d.length > 0) || dayTotal(day) > 0 || Object.keys(day.c || {}).length > 0 || (day.ms || []).length > 0);
+  if (!day) return false;
+  if ((day.d || []).length || (day.ms || []).length) return true;
+  if (Object.values(day.m || {}).some((v) => v > 0)) return true;
+  return Object.keys(day.c || {}).some((id) => { const c = counterById(id); return c && !c.shame && day.c[id] > 0; });
+}
+// Сколько XP потеряно за день (слабости + отрицательные ручные очки).
+function dayLoss(day) {
+  if (!day) return 0;
+  let l = 0;
+  for (const x of day.b || []) for (const id in x.r) if (statById(id)) l += Math.min(0, x.r[id]);
+  for (const id in day.m || {}) if (statById(id)) l += Math.min(0, day.m[id]);
+  return l;
 }
 
 /* ---------------------- Счётчики и вехи ---------------------- */
@@ -266,6 +290,7 @@ function dayCounters(day) {
   if (!day) return c;
   for (const id in day.c || {}) c[id] = (c[id] || 0) + day.c[id];
   for (const x of day.d || []) for (const id in x.c || {}) c[id] = (c[id] || 0) + x.c[id];
+  for (const x of day.b || []) for (const id in x.c || {}) c[id] = (c[id] || 0) + x.c[id];
   for (const id in c) c[id] = round1(c[id]);
   return c;
 }
@@ -375,7 +400,7 @@ function allAchievements() {
   for (const c of counterList(S)) {
     const v = totals[c.id] || 0;
     c.tiers.forEach((t, i) => list.push({
-      id: `t_${c.id}_${t.goal}`, kind: 'tier', counter: c, tier: i, sphere: c.sphere, icon: c.icon,
+      id: `t_${c.id}_${t.goal}`, kind: c.shame || c.sphere === 'shame' ? 'shame' : 'tier', counter: c, tier: i, sphere: c.sphere, icon: c.icon,
       name: t.title, desc: `${c.name}: ${fmtNum(t.goal)} ${c.unit}`, ok: v >= t.goal, v: Math.min(v, t.goal), goal: t.goal,
     }));
   }
@@ -391,12 +416,18 @@ function checkAchievements(silent) {
     else if (!a.ok && S.ach[a.id]) delete S.ach[a.id];   // отменили запись — награда снова закрыта
   }
   if (silent || !fresh.length) return;
-  if (fresh.length > 3) toast(`Открыто достижений: ${fresh.length}`, 'gold', 'trophy');
-  else fresh.forEach((a, i) => setTimeout(() => toast(
-    a.kind === 'tier' ? `${a.counter.name}: «${a.name}» · ${RARITY[Math.min(a.tier, RARITY.length - 1)].name}` : 'Достижение: ' + a.name,
+  const good = fresh.filter((a) => a.kind !== 'shame'), bad = fresh.filter((a) => a.kind === 'shame');
+  if (good.length > 3) toast(`Открыто достижений: ${good.length}`, 'gold', 'trophy');
+  else good.forEach((a, i) => setTimeout(() => toast(
+    a.kind === 'tier' ? `${a.counter.name}: «${a.name}» · ${rarityOf(a.counter, a.tier).name}` : 'Достижение: ' + a.name,
     'gold', a.icon), i * 350));
-  SFX.play('achieve');
+  bad.slice(0, 3).forEach((a, i) => setTimeout(() => toast(`Позор: ты теперь «${a.name}»`, 'shame', 'skull'), (good.length + i) * 350 + 200));
+  if (good.length) SFX.play('achieve');
+  if (bad.length) setTimeout(() => SFX.play('fail'), good.length ? 450 : 0);
 }
+
+const isShame = (c) => !!c && (c.shame || c.sphere === 'shame');
+const rarityOf = (c, i) => { const R = isShame(c) ? SHAME_RARITY : RARITY; return R[Math.min(i, R.length - 1)]; };
 
 /* ---------------------- Изменения с отслеживанием уровня ---------------------- */
 
@@ -407,16 +438,19 @@ function mutate(fn) {
   fn();
   save();
   const after = snapshot();
-  const ups = [];
+  const ups = [], downs = [];
   for (const st of S.stats) {
     const a = before.lv[st.id] || 1, b = after.lv[st.id] || 1;
     if (b > a) ups.push({ st, from: a, to: b });
+    if (b < a) downs.push({ st, from: a, to: b });
   }
   const charUp = after.char > before.char ? after.char : 0;
+  const charDown = after.char < before.char ? after.char : 0;
   checkAchievements(false);
   save();
   render(false);
   if (ups.length || charUp) setTimeout(() => celebrate(ups, charUp), 450);
+  else if (downs.length || charDown) setTimeout(() => degrade(downs, charDown, before.char), 450);
 }
 
 /* ---------------------- Эффекты ---------------------- */
@@ -491,6 +525,41 @@ function celebrate(ups, charLvl) {
       ${charLvl ? `<div class="lv">${charLvl}</div><div class="lt">уровень · ${titleFor(charLvl)}</div>` : ''}
       ${rows ? `<div class="ups">${rows}</div>` : '<div style="height:16px"></div>'}
       <button class="btn primary block" data-act="close-lu">Принять силу</button>
+    </div>`;
+  document.body.appendChild(el);
+}
+
+// Удар по персонажу: красная вспышка, тряска, падающие минусы.
+function hurt(x, y, items) {
+  SFX.play('fail');
+  document.body.classList.remove('hurt'); void document.body.offsetWidth; document.body.classList.add('hurt');
+  setTimeout(() => document.body.classList.remove('hurt'), 650);
+  fx('crack', x, y, '', '', 700);
+  items.forEach((it, i) => {
+    const dx = (i - (items.length - 1) / 2) * 62;
+    setTimeout(() => fx('float sink', x + dx, y, `color:${it.color}`, `${it.icon ? ico(it.icon) : ''}${esc(it.text)}`, 1300), i * 110);
+  });
+}
+
+// Потеря уровня: экран «ДЕГРАДАЦИЯ».
+function degrade(downs, charLvl, fromChar) {
+  SFX.play('degrade');
+  const el = document.createElement('div');
+  el.className = 'lu down';
+  let debris = '';
+  for (let i = 0; i < 40; i++) debris += `<b style="left:${Math.random() * 100}%;--t:${1.2 + Math.random() * 1.4}s;--dl:${Math.random() * .6}s;--w:${2 + Math.random() * 4}px"></b>`;
+  const rows = downs.map((u, i) => `
+    <div style="color:${u.st.color};animation-delay:${.6 + i * .12}s">${ico(u.st.icon)}<span style="color:var(--text)">${esc(u.st.name)}</span>
+      <span class="mono" style="color:var(--muted)">${u.from}</span><span class="arrow">↓</span><span>${u.to}</span></div>`).join('');
+  el.innerHTML = `
+    <div class="flash"></div>
+    <div class="debris">${debris}</div>
+    <div class="box">
+      <div class="dcore">${ico('arrowDown')}</div>
+      <div class="t">ДЕГРАДАЦИЯ</div>
+      ${charLvl ? `<div class="lv">${fromChar} → ${charLvl}</div><div class="lt">уровень персонажа упал · ${titleFor(charLvl)}</div>` : '<div class="lt">ты стал слабее</div>'}
+      ${rows ? `<div class="ups">${rows}</div>` : '<div style="height:16px"></div>'}
+      <button class="btn block shamebtn" data-act="close-lu">Я исправлюсь</button>
     </div>`;
   document.body.appendChild(el);
 }
@@ -643,6 +712,23 @@ function viewDay() {
       <span class="qr">${rewardsHTML(q.rewards)}</span>
     </button>`).join('');
 
+  const bcounts = {};
+  (day.b || []).forEach((x) => { bcounts[x.q] = (bcounts[x.q] || 0) + 1; });
+  const debuffs = (S.debuffs || []).map((q) => `
+    <button class="quest debuff ${bcounts[q.id] ? 'done' : ''}" data-act="debuff" data-id="${q.id}">
+      ${bcounts[q.id] ? `<span class="qc">${bcounts[q.id] > 1 ? '×' + bcounts[q.id] : '!'}</span>` : ''}
+      <span class="qi">${ico(q.icon)}</span>
+      <span class="qn">${esc(q.name)}</span>
+      <span class="qr">${rewardsHTML(q.rewards)}</span>
+    </button>`).join('');
+  const bdone = (day.b || []).map((x, i) => `
+    <div class="done-item bad">
+      <span class="qi">${ico(x.i)}</span>
+      <div class="grow"><div style="font-weight:600;font-size:14px">${esc(x.n)}</div><span class="qr" style="margin-top:3px">${rewardsHTML(x.r)}</span></div>
+      <button class="icon-btn" data-act="undo-debuff" data-idx="${i}" aria-label="Отменить">✕</button>
+    </div>`).join('');
+  const loss = dayLoss(day);
+
   const done = (day.d || []).map((x, i) => `
     <div class="done-item">
       <span class="qi">${ico(x.i)}</span>
@@ -687,14 +773,19 @@ function viewDay() {
       <button class="icon-btn" data-act="next-day" ${isToday ? 'disabled' : ''}>›</button>
     </div>
     <div class="card sweep center">
-      <div class="daytotal" id="daytotal">${total > 0 ? '+' : ''}${total} XP</div>
-      <div class="small muted">${total ? 'энергии получено за день' : 'Отметь, что сделал сегодня, — и ядро зарядится'}</div>
+      <div class="daytotal ${total < 0 ? 'neg' : ''}" id="daytotal">${total > 0 ? '+' : ''}${total} XP</div>
+      <div class="small muted">${total < 0 ? 'день в минусе — ядро теряет энергию' : total ? 'энергии получено за день' : 'Отметь, что сделал сегодня, — и ядро зарядится'}</div>
+      ${loss ? `<div class="lossline">${ico('arrowDown')} потеряно ${loss} XP на слабостях</div>` : ''}
     </div>
     <button class="cta ai-cta" data-act="ai-open">${ico('mic')} Рассказать о дне ИИ</button>
     ${progress ? `<h2>Прогресс достижений</h2><div class="card">${progress}</div>` : ''}
     <h2>Подвиги дня</h2>
     <div class="quests">${quests}</div>
     ${done ? `<div class="card" style="margin-top:12px">${done}</div>` : ''}
+    <h2 class="bad-h">Слабости дня</h2>
+    <div class="small muted" style="margin:-4px 2px 10px">Честно отметь, где сорвался. Штраф вдвое сильнее награды — и пополняет коллекцию позора.</div>
+    <div class="quests">${debuffs}</div>
+    ${bdone ? `<div class="card bad-card" style="margin-top:12px">${bdone}</div>` : ''}
     <h2>Ручное начисление</h2>
     ${rows}
     <h2>Заметка дня</h2>
@@ -709,10 +800,13 @@ function viewHistory() {
 
   const W = 340, H = 180, padL = 26, padB = 22, padT = 10;
   const totals = days.map((k) => { const p = dayPoints(getDay(k)); return S.stats.map((s) => Math.max(0, p[s.id] || 0)); });
+  const losses = days.map((k) => dayLoss(getDay(k)));
   const maxV = Math.max(5, ...totals.map((a) => a.reduce((x, y) => x + y, 0)));
+  const minV = Math.min(0, ...losses);
   const bw = (W - padL) / days.length;
-  const yT = (v) => H - padB - (v / maxV) * (H - padB - padT);
+  const yT = (v) => H - padB - ((v - minV) / (maxV - minV)) * (H - padB - padT);
   let bars = `<defs><filter id="cglow" x="-50%" y="-20%" width="200%" height="140%"><feGaussianBlur stdDeviation="2.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`;
+  if (minV < 0) bars += `<line x1="${padL}" x2="${W}" y1="${yT(0)}" y2="${yT(0)}" stroke="rgba(255,220,200,.25)"/>`;
   for (let g = 0; g <= 2; g++) {
     const v = Math.round((maxV * g) / 2), y = yT(v);
     bars += `<line x1="${padL}" x2="${W}" y1="${y}" y2="${y}" stroke="rgba(255,60,40,.15)" stroke-dasharray="2 4"/><text x="${padL - 5}" y="${y + 4}" font-size="10" fill="rgba(255,220,200,.5)" text-anchor="end" style="font-family:'JetBrains Mono',monospace">${v}</text>`;
@@ -727,6 +821,7 @@ function viewHistory() {
       col += `<rect x="${x.toFixed(1)}" y="${y2.toFixed(1)}" width="${w.toFixed(1)}" height="${(y1 - y2).toFixed(1)}" fill="${S.stats[j].color}" rx="${Math.min(2, w / 3).toFixed(1)}"/>`;
       acc += v;
     });
+    if (losses[i] < 0) col += `<rect x="${x.toFixed(1)}" y="${yT(0).toFixed(1)}" width="${w.toFixed(1)}" height="${(yT(losses[i]) - yT(0)).toFixed(1)}" fill="#9dff3a" opacity=".75" rx="${Math.min(2, w / 3).toFixed(1)}"/>`;
     if (col) cols += `<g class="colb" style="animation-delay:${(i * (600 / days.length)).toFixed(0)}ms">${col}</g>`;
     const step = histRange <= 7 ? 1 : histRange <= 30 ? 5 : 15;
     if ((days.length - 1 - i) % step === 0) {
@@ -738,19 +833,21 @@ function viewHistory() {
   bars += `<g filter="url(#cglow)">${cols}</g>`;
 
   const sums = S.stats.map((s, j) => totals.reduce((a, arr) => a + arr[j], 0));
-  const periodTotal = sums.reduce((a, b) => a + b, 0);
+  const periodLoss = losses.reduce((a, b) => a + b, 0);
+  const periodTotal = sums.reduce((a, b) => a + b, 0) + periodLoss;
   const activeInRange = days.filter((k) => isActive(getDay(k))).length;
 
-  const list = Object.keys(S.log).filter((k) => isActive(S.log[k]) || (S.log[k].note || '').trim()).sort().reverse().slice(0, 60).map((k) => {
+  const list = Object.keys(S.log).filter((k) => isActive(S.log[k]) || (S.log[k].b || []).length || (S.log[k].note || '').trim()).sort().reverse().slice(0, 60).map((k) => {
     const d = S.log[k];
     const p = dayPoints(d);
     const chips = S.stats.filter((s) => p[s.id]).map((s) => `<span class="chip" style="color:${s.color}">${ico(s.icon)}${sign(p[s.id])}</span>`).join('');
     const note = (d.note || '').trim();
     return `
       <button class="card hday" data-act="open-day" data-k="${k}">
-        <div class="row between"><b>${humanDate(k)}</b><span class="today-plus">${sign(dayTotal(d))} XP</span></div>
+        <div class="row between"><b>${humanDate(k)}</b><span class="${dayTotal(d) < 0 ? 'today-minus' : 'today-plus'}">${sign(dayTotal(d))} XP</span></div>
         ${chips ? `<div class="chips">${chips}</div>` : ''}
         ${(d.d || []).length ? `<div class="ic">${d.d.map((x) => ico(x.i)).join('')}</div>` : ''}
+        ${(d.b || []).length ? `<div class="ic bad">${d.b.map((x) => ico(x.i)).join('')}</div>` : ''}
         ${(d.ms || []).filter(milestoneById).map((id) => `<div class="ms-line">${ico(milestoneById(id).icon)}<span>${esc(milestoneById(id).name)}</span></div>`).join('')}
         ${note ? `<div class="quote">«${esc(note.slice(0, 140))}${note.length > 140 ? '…' : ''}»</div>` : ''}
       </button>`;
@@ -763,10 +860,11 @@ function viewHistory() {
     </div>
     <div class="card sweep">
       <div class="row between" style="margin-bottom:8px">
-        <span class="bigxp">+${fmt(periodTotal)} XP</span>
+        <span class="bigxp ${periodTotal < 0 ? 'neg' : ''}">${periodTotal < 0 ? '−' + fmt(-periodTotal) : '+' + fmt(periodTotal)} XP</span>
         <span class="small muted mono">${activeInRange}/${histRange} дней</span>
       </div>
       <svg class="chart" viewBox="0 0 ${W} ${H}">${bars}</svg>
+      ${periodLoss ? `<div class="lossline">${ico('arrowDown')} потеряно на слабостях ${periodLoss} XP</div>` : ''}
       <div class="legend">${S.stats.map((s, j) => `<span style="color:${s.color}"><i style="background:${s.color}"></i><span style="color:var(--muted)">${esc(s.name)} ${sums[j]}</span></span>`).join('')}</div>
     </div>
     <h2>Летопись</h2>
@@ -777,12 +875,14 @@ function viewHistory() {
 let achSphere = 'system';
 
 function viewAch() {
-  const all = allAchievements();
+  const everything = allAchievements();
+  const all = everything.filter((a) => a.kind !== 'shame');
   const got = all.filter((a) => a.ok).length;
-  const bySphere = (id) => all.filter((a) => a.sphere === id);
+  const shameGot = everything.filter((a) => a.kind === 'shame' && a.ok).length;
+  const bySphere = (id) => everything.filter((a) => a.sphere === id);
   const chips = SPHERES.map((sp) => {
     const list = bySphere(sp.id);
-    return `<button class="sp ${achSphere === sp.id ? 'on' : ''}" data-act="sphere" data-s="${sp.id}" style="--c:${sp.color}">
+    return `<button class="sp ${sp.id === 'shame' ? 'shame' : ''} ${achSphere === sp.id ? 'on' : ''}" data-act="sphere" data-s="${sp.id}" style="--c:${sp.color}">
       ${ico(sp.icon)}<span>${sp.name}</span><b>${list.filter((a) => a.ok).length}/${list.length}</b></button>`;
   }).join('');
 
@@ -802,7 +902,7 @@ function viewAch() {
       const v = totals[c.id] || 0;
       const nextI = c.tiers.findIndex((t) => v < t.goal);
       const next = nextI >= 0 ? c.tiers[nextI] : null;
-      return `<div class="card chain">
+      return `<div class="card chain ${isShame(c) ? 'shame' : ''}">
         <div class="row">
           <div class="sico" style="color:${sp.color}">${ico(c.icon)}</div>
           <div class="grow"><div class="sn">${esc(c.name)}${c.custom ? '<span class="tag">своё</span>' : ''}</div>
@@ -811,7 +911,7 @@ function viewAch() {
         </div>
         ${barHTML('ch-' + c.id, next ? v / next.goal : 1, sp.color)}
         <div class="tiers">${c.tiers.map((t, i) => {
-          const r = RARITY[Math.min(i, RARITY.length - 1)];
+          const r = rarityOf(c, i);
           return `<button class="tier ${v >= t.goal ? 'on' : ''}" style="--r:${r.color}" data-act="tier" data-id="${c.id}" data-i="${i}">
             <span class="hx">${ico(v >= t.goal ? c.icon : 'sparkle')}</span><b>${fmtNum(t.goal)}</b></button>`;
         }).join('')}</div>
@@ -825,7 +925,10 @@ function viewAch() {
         <div class="ad">${esc(m.desc || '')}</div>
         <div class="ap">${md[m.id] ? '✓ ' + shortDate(md[m.id]) : 'не открыто'}${m.custom ? ' · своё' : ''}</div>
       </button>`).join('');
-    body = `<h2>Цепочки</h2>${chains}
+    body = achSphere === 'shame' ? `
+      <div class="card shame-intro">${ico('skull')}<div><b>Коллекция позора: ${shameGot}</b><div class="small muted">Эти клейма ты получаешь за слабости. Не собирай их.</div></div></div>
+      <h2 class="bad-h">Клейма</h2>${chains}
+      <button class="btn block add-own" data-act="add-cc">${ico('sparkle')} Своя цепочка позора</button>` : `<h2>Цепочки</h2>${chains}
       <button class="btn block add-own" data-act="add-cc">${ico('sparkle')} Своя цепочка</button>
       <h2>Вехи</h2><div class="achs">${miles}</div>
       <button class="btn block add-own" data-act="add-cm" style="margin-top:12px">${ico('sparkle')} Своя веха</button>`;
@@ -836,6 +939,7 @@ function viewAch() {
     <div class="card sweep">
       <div class="row between"><span class="sn">Открыто</span><span class="bigxp">${got} / ${all.length}</span></div>
       ${barHTML('ach-all', got / all.length, '#ff4a2a')}
+      ${shameGot ? `<div class="row between" style="margin-top:10px"><span class="sn" style="color:#9dff3a">Позор</span><span class="shamecount">${ico('skull')} ${shameGot}</span></div>` : ''}
     </div>
     <div class="spheres">${chips}</div>
     ${body}
@@ -874,6 +978,17 @@ function viewSettings() {
           <button class="btn sm" data-act="edit-quest" data-id="${q.id}">Изменить</button>
         </div>`).join('')}
       <button class="btn block" data-act="add-quest" style="margin-top:10px">＋ Добавить подвиг</button>
+    </div>
+
+    <h2 class="bad-h">Слабости</h2>
+    <div class="card bad-card">
+      ${(S.debuffs || []).map((q) => `
+        <div class="list-item">
+          <span class="qi" style="color:#9dff3a">${ico(q.icon)}</span>
+          <div class="grow"><div style="font-weight:600">${esc(q.name)}</div><span class="qr" style="margin-top:3px">${rewardsHTML(q.rewards)}</span></div>
+          <button class="btn sm" data-act="edit-quest" data-kind="debuff" data-id="${q.id}">Изменить</button>
+        </div>`).join('')}
+      <button class="btn block" data-act="add-quest" data-kind="debuff" style="margin-top:10px">＋ Добавить слабость</button>
     </div>
 
     <h2>ИИ-помощник</h2>
@@ -951,15 +1066,18 @@ function qcRow(cid, v) {
     </div></div>`;
 }
 
-function questEditor(id) {
-  const q = id ? S.quests.find((x) => x.id === id) : { id: '', name: '', icon: 'bolt', rewards: {}, c: {} };
+const questListOf = (kind) => (kind === 'debuff' ? S.debuffs : S.quests);
+
+function questEditor(id, kind = 'quest') {
+  const bad = kind === 'debuff';
+  const q = id ? questListOf(kind).find((x) => x.id === id) : { id: '', name: '', icon: bad ? 'skull' : 'bolt', rewards: {}, c: {} };
   openSheet(`
-    <h1>${id ? 'Подвиг' : 'Новый подвиг'}</h1>
+    <h1>${bad ? (id ? 'Слабость' : 'Новая слабость') : (id ? 'Подвиг' : 'Новый подвиг')}</h1>
     <label class="f">Название</label>
-    <input type="text" id="q-name" value="${esc(q.name)}" maxlength="40" placeholder="Например, Холодный душ">
+    <input type="text" id="q-name" value="${esc(q.name)}" maxlength="40" placeholder="${bad ? 'Например, Ночной дожор' : 'Например, Холодный душ'}">
     <label class="f">Символ</label>
     ${iconPicker(q.icon)}
-    <label class="f">Награда</label>
+    <label class="f">${bad ? 'Штраф (обычно вдвое больше награды за похожее полезное дело)' : 'Награда'}</label>
     ${S.stats.map((s) => {
       const v = q.rewards[s.id] || 0;
       return `
@@ -969,7 +1087,7 @@ function questEditor(id) {
         <div class="stepper">
           <button class="icon-btn" data-act="qr-dec" data-id="${s.id}">−</button>
           <span class="val ${v > 0 ? 'pos' : v < 0 ? 'neg' : ''}" id="qr-${s.id}" data-v="${v}">${v}</span>
-          <button class="icon-btn" data-act="qr-inc" data-id="${s.id}">+</button>
+          <button class="icon-btn" data-act="qr-inc" data-id="${s.id}" ${bad ? 'data-max="0"' : ''}>+</button>
         </div>
       </div>`;
     }).join('')}
@@ -980,9 +1098,9 @@ function questEditor(id) {
       ${SPHERES.filter((sp) => sp.id !== 'system').map((sp) => `<optgroup label="${sp.name}">${counterList(S).filter((c) => c.sphere === sp.id).map((c) => `<option value="${c.id}">${esc(c.name)} (${c.unit})</option>`).join('')}</optgroup>`).join('')}
     </select>
     <div class="row" style="margin-top:22px">
-      ${id ? `<button class="btn danger" data-act="del-quest" data-id="${id}">Удалить</button>` : ''}
+      ${id ? `<button class="btn danger" data-act="del-quest" data-kind="${kind}" data-id="${id}">Удалить</button>` : ''}
       <button class="btn grow" data-act="close-sheet">Отмена</button>
-      <button class="btn primary grow" data-act="save-quest" data-id="${id || ''}">Сохранить</button>
+      <button class="btn primary grow" data-act="save-quest" data-kind="${kind}" data-id="${id || ''}">Сохранить</button>
     </div>
   `);
 }
@@ -1016,7 +1134,7 @@ function counterSheet(id) {
     </div>
     ${(getDay(todayKey()) && (getDay(todayKey()).c || {})[id]) ? `<button class="btn danger block" data-act="counter-add" data-id="${id}" data-n="-1" style="margin-top:8px">−1 за сегодня</button>` : ''}
     <div class="tiers big">${c.tiers.map((t, i) => {
-      const r = RARITY[Math.min(i, RARITY.length - 1)];
+      const r = rarityOf(c, i);
       return `<div class="tier ${total >= t.goal ? 'on' : ''}" style="--r:${r.color}"><span class="hx">${ico(total >= t.goal ? c.icon : 'sparkle')}</span><b>${fmtNum(t.goal)}</b><em>${esc(t.title)}</em></div>`;
     }).join('')}</div>
     ${c.desc ? `<div class="small muted" style="margin-top:14px">Что считается: ${esc(c.desc)}</div>` : ''}
@@ -1257,17 +1375,20 @@ function aiResultHTML(head) {
     </button>`;
   const qs = r.quests.map((x) => { const q = S.quests.find((y) => y.id === x.id);
     return row('q:' + x.id, ico(q.icon), esc(q.name) + (x.count > 1 ? ' ×' + x.count : ''), rewardsHTML(Object.fromEntries(Object.entries(q.rewards).map(([k, v]) => [k, v * x.count]))), '#ff8a5a'); }).join('');
+  const bs = (r.debuffs || []).map((x) => { const q = (S.debuffs || []).find((y) => y.id === x.id);
+    return q ? row('b:' + x.id, ico(q.icon), esc(q.name) + (x.count > 1 ? ' ×' + x.count : ''), rewardsHTML(Object.fromEntries(Object.entries(q.rewards).map(([k, v]) => [k, v * x.count]))), '#9dff3a') : ''; }).join('');
   const st = r.stats.map((x) => { const s = statById(x.id);
     return row('s:' + x.id, ico(s.icon), `${esc(s.name)} <b style="color:${s.color}">${sign(x.points)}</b>`, esc(x.reason), s.color); }).join('');
   const cs = r.counters.map((x) => { const c = counterById(x.id);
     return row('c:' + x.id, ico(c.icon), `${esc(c.name)} <b style="color:${sphereById(c.sphere).color}">+${fmtNum(x.amount)} ${c.unit}</b>`, esc(x.reason), sphereById(c.sphere).color); }).join('');
   const ms = r.milestones.map((x) => { const m = milestoneById(x.id);
     return row('m:' + x.id, ico(m.icon), `Веха: ${esc(m.name)}`, esc(x.reason || m.desc), 'var(--am)'); }).join('');
-  const empty = !qs && !st && !cs && !ms;
+  const empty = !qs && !bs && !st && !cs && !ms;
   return `
     <h1>Отчёт разобран</h1>${head}
     ${r.summary ? `<div class="card sweep ai-sum">${ico('sparkle')}<span>${esc(r.summary)}</span></div>` : ''}
     ${qs ? `<h2>Подвиги</h2>${qs}` : ''}
+    ${bs ? `<h2 class="bad-h">Слабости</h2>${bs}` : ''}
     ${st ? `<h2>Очки параметров</h2>${st}` : ''}
     ${cs ? `<h2>Счётчики достижений</h2>${cs}` : ''}
     ${ms ? `<h2>Вехи</h2>${ms}` : ''}
@@ -1292,6 +1413,7 @@ async function aiSend() {
   const already = [];
   if (day) {
     (day.d || []).forEach((x) => already.push('подвиг ' + x.n));
+    (day.b || []).forEach((x) => already.push('слабость ' + x.n));
     S.stats.forEach((st) => { if ((day.m || {})[st.id]) already.push(`${st.name} ${sign(day.m[st.id])}`); });
     Object.entries(day.c || {}).forEach(([id, v]) => counterById(id) && already.push(`${counterById(id).name} +${v}`));
     (day.ms || []).forEach((id) => milestoneById(id) && already.push('веха ' + milestoneById(id).name));
@@ -1306,6 +1428,7 @@ async function aiSend() {
     ai.result = result;
     ai.sel = {};
     result.quests.forEach((x) => { ai.sel['q:' + x.id] = true; });
+    (result.debuffs || []).forEach((x) => { ai.sel['b:' + x.id] = true; });
     result.stats.forEach((x) => { ai.sel['s:' + x.id] = true; });
     result.counters.forEach((x) => { ai.sel['c:' + x.id] = true; });
     result.milestones.forEach((x) => { ai.sel['m:' + x.id] = true; });
@@ -1331,6 +1454,13 @@ function aiApply() {
       for (let i = 0; i < x.count; i++) day.d.push({ q: q.id, n: q.name, i: q.icon, r: clone(q.rewards), c: clone(q.c || {}) });
       Object.entries(q.rewards).forEach(([k, v]) => { gained[k] = (gained[k] || 0) + v * x.count; });
     });
+    (r.debuffs || []).forEach((x) => {
+      if (!ai.sel['b:' + x.id]) return;
+      const q = S.debuffs.find((y) => y.id === x.id);
+      if (!q) return;
+      for (let i = 0; i < x.count; i++) day.b.push({ q: q.id, n: q.name, i: q.icon, r: clone(q.rewards), c: clone(q.c || {}) });
+      Object.entries(q.rewards).forEach(([k, v]) => { gained[k] = (gained[k] || 0) + v * x.count; });
+    });
     r.stats.forEach((x) => {
       if (!ai.sel['s:' + x.id]) return;
       day.m[x.id] = clamp((day.m[x.id] || 0) + x.points, -50, 99);
@@ -1343,11 +1473,15 @@ function aiApply() {
   });
   closeSheet();
   ai = { phase: 'input', text: '', result: null, sel: {}, error: '' };
-  SFX.play('quest');
   const x = innerWidth / 2, y = innerHeight * 0.32;
-  burst(x, y, 14);
-  floats(x, y, Object.entries(gained).filter(([id, v]) => v && statById(id)).slice(0, 5)
-    .map(([id, v]) => ({ icon: statById(id).icon, text: sign(v), color: statById(id).color })));
+  const items = Object.entries(gained).filter(([id, v]) => v && statById(id)).slice(0, 5);
+  const net = items.reduce((a, [, v]) => a + v, 0);
+  if (net < 0) hurt(x, y, items.map(([id, v]) => ({ icon: statById(id).icon, text: sign(v), color: v < 0 ? '#9dff3a' : statById(id).color })));
+  else {
+    SFX.play('quest');
+    burst(x, y, 14);
+    floats(x, y, items.map(([id, v]) => ({ icon: statById(id).icon, text: sign(v), color: v < 0 ? '#9dff3a' : statById(id).color })));
+  }
   const dt = $('#daytotal'); if (dt) dt.classList.add('bump');
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -1476,6 +1610,21 @@ document.addEventListener('click', (e) => {
         .map(([sid, v]) => ({ icon: statById(sid).icon, text: sign(v), color: statById(sid).color })));
       break;
     }
+    case 'debuff': {
+      const q = (S.debuffs || []).find((x) => x.id === id);
+      if (!q) break;
+      const [x, y] = [e.clientX || centerOf(el)[0], e.clientY || centerOf(el)[1]];
+      mutate(() => { ensureDay(curDate).b.push({ q: q.id, n: q.name, i: q.icon, r: clone(q.rewards), c: clone(q.c || {}) }); });
+      const card = $(`[data-act=debuff][data-id="${id}"]`);
+      if (card) card.classList.add('hit');
+      const dt = $('#daytotal'); if (dt) dt.classList.add('bump');
+      hurt(x, y - 20, Object.entries(q.rewards).filter(([sid, v]) => v && statById(sid))
+        .map(([sid, v]) => ({ icon: statById(sid).icon, text: sign(v), color: '#9dff3a' })));
+      break;
+    }
+    case 'undo-debuff':
+      mutate(() => { ensureDay(curDate).b.splice(Number(el.dataset.idx), 1); });
+      break;
     case 'undo-quest':
       mutate(() => { ensureDay(curDate).d.splice(Number(el.dataset.idx), 1); });
       break;
@@ -1512,12 +1661,13 @@ document.addEventListener('click', (e) => {
       }
       break;
 
-    case 'edit-quest': questEditor(id); break;
-    case 'add-quest': questEditor(null); break;
+    case 'edit-quest': questEditor(id, el.dataset.kind); break;
+    case 'add-quest': questEditor(null, el.dataset.kind); break;
     case 'qr-inc':
     case 'qr-dec': {
       const v = $('#qr-' + id);
-      const n = clamp(Number(v.dataset.v) + (act === 'qr-inc' ? 1 : -1), -20, 20);
+      const max = el.dataset.max !== undefined ? Number(el.dataset.max) : 20;
+      const n = clamp(Number(v.dataset.v) + (act === 'qr-inc' ? 1 : -1), -20, max);
       v.dataset.v = n; v.textContent = n;
       v.className = 'val bump ' + (n > 0 ? 'pos' : n < 0 ? 'neg' : '');
       void v.offsetWidth;
@@ -1531,14 +1681,18 @@ document.addEventListener('click', (e) => {
       S.stats.forEach((s) => { const n = Number($('#qr-' + s.id).dataset.v); if (n) rewards[s.id] = n; });
       const c = {};
       document.querySelectorAll('#qc-list [data-qc]').forEach((row) => { const n = Number($('#qc-' + row.dataset.qc).dataset.v); if (n > 0) c[row.dataset.qc] = n; });
-      if (id) Object.assign(S.quests.find((x) => x.id === id), { name, icon, rewards, c });
-      else S.quests.push({ id: uid('q'), name, icon, rewards, c });
+      const kind = el.dataset.kind || 'quest';
+      if (kind === 'debuff') for (const k in rewards) if (rewards[k] > 0) rewards[k] = -rewards[k];   // у слабости только минусы
+      const list = questListOf(kind);
+      if (id) Object.assign(list.find((x) => x.id === id), { name, icon, rewards, c });
+      else list.push({ id: uid(kind === 'debuff' ? 'b' : 'q'), name, icon, rewards, c });
       save(); closeSheet(); render(false);
       break;
     }
     case 'del-quest':
-      if (confirm('Удалить подвиг? Уже начисленные очки сохранятся.')) {
-        S.quests = S.quests.filter((q) => q.id !== id);
+      if (confirm('Удалить? Уже начисленные очки сохранятся.')) {
+        if (el.dataset.kind === 'debuff') S.debuffs = S.debuffs.filter((q) => q.id !== id);
+        else S.quests = S.quests.filter((q) => q.id !== id);
         save(); closeSheet(); render(false);
       }
       break;
@@ -1576,7 +1730,7 @@ document.addEventListener('click', (e) => {
     }
     case 'tier': {
       const c = counterById(id), i = Number(el.dataset.i), t = c.tiers[i];
-      toast(`«${t.title}» · ${RARITY[Math.min(i, RARITY.length - 1)].name} · ${fmtNum(t.goal)} ${c.unit}`, '', c.icon);
+      toast(`«${t.title}» · ${rarityOf(c, i).name} · ${fmtNum(t.goal)} ${c.unit}`, isShame(c) ? 'shame' : '', c.icon);
       break;
     }
     case 'milestone': milestoneSheet(id); break;
@@ -1644,7 +1798,7 @@ document.addEventListener('click', (e) => {
 });
 
 const SOUND_FOR = {
-  inc: 'zap', dec: 'down', quest: 'quest', 'undo-quest': 'down', 'rm-ms': 'down', 'rm-counter': 'down',
+  inc: 'zap', dec: 'down', quest: 'quest', 'undo-quest': 'down', debuff: null, 'undo-debuff': 'tap', 'rm-ms': 'down', 'rm-counter': 'down',
   'counter-add': 'zap', 'ms-done': null, 'ai-send': null, 'ai-apply': null, 'ai-test': null, sound: null, 'close-lu': 'tap',
 };
 
