@@ -1,5 +1,5 @@
-// Service worker: offline-кэш. При изменении файлов увеличивай VERSION.
-const VERSION = 'lvlup-v15';
+// Service worker: offline-кэш. При изменении файлов увеличивай VERSION (и APP_VERSION в app.js).
+const VERSION = 'lvlup-v16';
 const ASSETS = [
   './',
   './index.html',
@@ -46,7 +46,8 @@ self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
   e.respondWith(
-    fetch(req)
+    // no-cache: всегда сверяемся с сервером, а не с HTTP-кэшем браузера (GitHub Pages кэширует на 10 минут).
+    (req.mode === 'navigate' ? fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' }) : fetch(req, { cache: 'no-cache' }))
       .then((res) => {
         if (res.ok) {
           const copy = res.clone();

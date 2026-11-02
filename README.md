@@ -159,4 +159,5 @@ python3 -m http.server 8000
 `vendor/` (Anthropic SDK, лицензия Apache 2.0),
 `sw.js` (офлайн-кэш), `manifest.webmanifest`, `icons/`, `fonts/` + `fonts.css`
 (Unbounded, Exo 2, JetBrains Mono, Jura, Cormorant SC, Ruslan Display — лицензия SIL OFL, встроены для работы офлайн).
-При изменении файлов увеличь `VERSION` в `sw.js`.
+При изменении файлов увеличь `VERSION` в `sw.js` и `APP_VERSION` в `app.js` — приложение само подхватит обновление.
+Текущая версия видна внизу экрана «Ещё», а версия друзей — в их карточке в лиге.

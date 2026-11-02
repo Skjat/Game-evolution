@@ -6,6 +6,7 @@
    ===================================================================== */
 
 const STORAGE_KEY = 'lvlup.v1';
+const APP_VERSION = 16;   // совпадает с номером в sw.js (lvlup-vN)
 const DATA_VERSION = 5;
 
 /* ---------------------- Иконки (SVG, 24×24, линии) ---------------------- */
@@ -813,7 +814,8 @@ function openSheet(html) {
   $('#sheet-card').innerHTML = `<button class="sheet-x" data-act="close-sheet" aria-label="Закрыть">✕</button>` + html;
   $('#sheet').classList.remove('hidden');
 }
-function closeSheet() { micStop(); $('#sheet').classList.add('hidden'); $('#sheet-card').innerHTML = ''; }
+let updatePending = false;
+function closeSheet() { micStop(); $('#sheet').classList.add('hidden'); $('#sheet-card').innerHTML = ''; if (updatePending) location.reload(); }
 
 function statById(id) { return S.stats.find((s) => s.id === id); }
 function rewardsHTML(r) {
@@ -1298,6 +1300,10 @@ function viewSettings() {
       <input type="file" id="importfile" accept="application/json,.json,text/plain" class="hidden">
       <button class="btn danger block" data-act="reset" style="margin-top:10px">Начать заново</button>
     </div>
+    <div class="row between small muted" style="margin-top:14px;padding:0 2px">
+      <span>Версия приложения ${APP_VERSION}</span>
+      <button class="btn sm" data-act="app-update">Проверить обновление</button>
+    </div>
 
     ${standalone ? '' : `
     <h2>Установка на iPhone</h2>
@@ -1344,7 +1350,7 @@ function leagueProfile() {
     return top ? { t: top.title, g: top.goal } : null;
   }).filter(Boolean).sort((a, b) => b.g - a.g).slice(0, 4).map((x) => x.t);
   return {
-    v: 1, level: ch.level, title: titleFor(ch.level), xp: total, week, weekLoss: loss, weekWeak: weak, weekStart: ws, lastWeek: last, lastWeekLoss: lastLoss, lastWeekWeak: lastWeak, lastWeekStart: pws,
+    v: 1, app: APP_VERSION, level: ch.level, title: titleFor(ch.level), xp: total, week, weekLoss: loss, weekWeak: weak, weekStart: ws, lastWeek: last, lastWeekLoss: lastLoss, lastWeekWeak: lastWeak, lastWeekStart: pws,
     streak: currentStreak(), best: bestStreak(), ach: all.filter((a) => a.kind !== 'shame' && a.ok).length,
     shame: all.filter((a) => a.kind === 'shame' && a.ok).length, shameTitles,
     stats: S.stats.slice(0, 8).map((s) => ({ n: s.name, i: s.icon, c: s.color, l: levelInfo(xp[s.id], STAT_K).level })),
@@ -1671,7 +1677,7 @@ function memberSheet(id) {
       <button class="btn grow danger" data-act="rp-open" data-id="${m.id}" data-k="complaint">${ico('balance')} Донести</button>
     </div>
     <div class="small muted" style="margin-top:8px">ИИ составит отчёт за день, лига проголосует. При большинстве «за» он добавится в день ${esc(m.name)}.</div>` : ''}
-    <div class="sx" style="margin-top:12px;text-align:center">обновлено ${timeAgo(m.updated_at)}</div>
+    <div class="sx" style="margin-top:12px;text-align:center">обновлено ${timeAgo(m.updated_at)} · ${(p.app || 0) >= APP_VERSION ? 'версия ' + p.app : `<span class="tox">старая версия приложения${p.app ? ' ' + p.app : ''} — пусть перезапустит</span>`}</div>
   `);
 }
 
@@ -2755,6 +2761,7 @@ ${LEAGUE.invite(c)}`, 'Приглашение скопировано');
       break;
 
     case 'export': doExport(); break;
+    case 'app-update': checkUpdate(true); break;
     case 'import': $('#importfile').click(); break;
     case 'reset':
       if (confirm('Удалить весь прогресс и начать заново? Это нельзя отменить.')) {
@@ -2856,7 +2863,26 @@ save();
 render(true);
 scheduleSync(800);
 
+// Обновления: новая версия ставится в фоне и сразу подхватывается перезагрузкой (если не открыта шторка).
+let swReg = null;
+async function checkUpdate(manual) {
+  if (!swReg) { if (manual) location.reload(); return; }
+  if (manual) toast('Проверяю обновление…', '', 'refresh');
+  try { await swReg.update(); } catch (e) { /* нет сети */ }
+  if (manual && !swReg.installing && !swReg.waiting) setTimeout(() => location.reload(), 600);
+}
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloading) return;
+    if ($('#sheet').classList.contains('hidden')) { reloading = true; location.reload(); }
+    else { updatePending = true; toast('Вышло обновление — закрой окно, и приложение перезапустится', 'gold', 'refresh'); }
+  });
+  navigator.serviceWorker.register('sw.js').then((r) => {
+    swReg = r;
+    // Проверяем обновление при каждом возвращении в приложение (iOS держит его открытым неделями).
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkUpdate(false); });
+  }).catch(() => {});
 }
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
