@@ -6,7 +6,9 @@
    ===================================================================== */
 
 const STORAGE_KEY = 'lvlup.v1';
-const APP_VERSION = 24;
+const APP_VERSION = 25;
+const EDIT_BACK_DAYS = 1;    // править можно сегодня и вчера; более ранние дни — только чтение
+const NIGHT_HOUR = 4;        // до 4 утра «Итоги» открываются на вчерашнем дне
 const COURT_POINTS = 3;   // штраф суда за утверждённый донос / бонус за похвалу — в каждый связанный параметр (до двух)   // совпадает с номером в sw.js (lvlup-vN)
 const QUEST_MAX_REWARD = 5;   // максимум очков подвига в один параметр
 const QUEST_DAY_LIMIT = 3;    // один подвиг — не больше 3 раз за день
@@ -239,6 +241,9 @@ function dateKey(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-'
 function parseKey(k) { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); }
 function addDays(k, n) { const d = parseKey(k); d.setDate(d.getDate() + n); return dateKey(d); }
 function todayKey() { return dateKey(new Date()); }
+// День для отчёта: ночью (до 4 утра) — ещё вчерашний.
+function reportDay() { const d = new Date(); if (d.getHours() < NIGHT_HOUR) d.setDate(d.getDate() - 1); return dateKey(d); }
+const isEditable = (k) => k >= addDays(todayKey(), -EDIT_BACK_DAYS) && k <= todayKey();
 function plural(n, one, few, many) {
   const a = Math.abs(n) % 100, b = a % 10;
   if (a > 10 && a < 20) return many;
@@ -273,7 +278,8 @@ function defaultState() {
     custom: { counters: [], milestones: [] },   // свои достижения игрока
     shared: { counters: [], milestones: [] },   // общие достижения лиги (приходят с сервера)
     courtDone: [],                              // id решений суда лиги, уже добавленных в дни
-    courtSeen: [],                              // id моих доносов, итог которых уже засчитан в «Поборника» / «Ябеду»
+    courtSeen: [],
+    archivedStats: [],                          // скрытые параметры (очки сохраняются)                              // id моих доносов, итог которых уже засчитан в «Поборника» / «Ябеду»
     created: todayKey(),
   };
 }
@@ -312,6 +318,7 @@ function migrate(s) {
   s.shared = Object.assign({ counters: [], milestones: [] }, s.shared || {});
   if (!Array.isArray(s.courtDone)) s.courtDone = [];
   if (!Array.isArray(s.courtSeen)) s.courtSeen = [];
+  if (!Array.isArray(s.archivedStats)) s.archivedStats = [];
   for (const q of s.quests || []) for (const k in q.rewards || {}) q.rewards[k] = Math.max(-QUEST_MAX_REWARD, Math.min(QUEST_MAX_REWARD, Number(q.rewards[k]) || 0));
   s.v = DATA_VERSION;
   return s;
@@ -359,6 +366,8 @@ function ensureDay(k) {
   if (!d.b) d.b = [];
   return d;
 }
+// Сколько можно добавить в счётчик за один день вручную или через ИИ.
+const counterDayCap = (c) => ({ 'км': 100, 'ч': 24, 'мин': 600, 'шагов': 60000, 'страниц': 500 }[c.unit] || 20);
 const capRewards = (r) => Object.fromEntries(Object.entries(r || {}).map(([k, v]) => [k, clamp(Number(v) || 0, -QUEST_MAX_REWARD, QUEST_MAX_REWARD)]));
 
 // Очки дня: от ИИ + подвиги + штрафы за клейма, полученные (или снятые искуплением) в этот день.
@@ -844,7 +853,8 @@ const barHTML = (key, pct, color) =>
 /* ---------------------- Экраны ---------------------- */
 
 let tab = 'hero';
-let curDate = todayKey();
+let curDate = reportDay();
+let showAllWeak = false;   // показать все слабости, а не только частые
 let histRange = 30;
 
 const TABS = [['hero', 'Герой', 'shieldStar'], ['day', 'Итоги', 'doc'], ['history', 'История', 'chart'], ['ach', 'Награды', 'trophy'], ['league', 'Лига', 'users'], ['settings', 'Ещё', 'gear']];
@@ -917,8 +927,9 @@ function viewHero() {
   const xp = statXP();
   const total = totalXP(xp);
   const ch = levelInfo(total, charK());
-  const tday = getDay(todayKey());
-  const today = dayPoints(tday, todayKey());
+  const rday = reportDay();
+  const tday = getDay(rday);
+  const today = dayPoints(tday, rday);
   const streak = currentStreak();
   const todayDone = isActive(tday);
 
@@ -961,7 +972,7 @@ function viewHero() {
       </div>
     </div>
     ${todayDone
-      ? `<button class="cta done" data-act="go-today">${ico(TI().act)} ${esc(TT().done)} · ${sign(dayTotal(tday, todayKey()))} XP</button>`
+      ? `<button class="cta done" data-act="go-today">${ico(TI().act)} ${esc(TT().done)} · ${sign(dayTotal(tday, rday))} XP</button>`
       : `<button class="cta" data-act="go-today">${ico(TI().tabs.day)} ${esc(TT().cta)}</button>`}
     ${S.stats.length >= 3 ? `<div class="card" style="padding:8px 6px 4px">${radarSVG(xp)}</div>` : ''}
     <h2>Параметры</h2>
@@ -975,7 +986,7 @@ function debuffHint(q) {
   const nb = cid && nextBrand(cid);
   if (!nb) return '<span>копит позор</span>';
   const left = q.c[cid] > 0 ? Math.ceil(nb.left / q.c[cid]) : nb.left;
-  return `<span>ещё ${Math.max(1, left)} до клейма</span>${nb.P ? rewardsHTML(nb.r) : '<span>· без штрафа</span>'}`;
+  return `<span>ещё ${Math.max(1, left)} до клейма</span>${nb.P ? rewardsHTML(nb.r) : ''}`;
 }
 
 function viewDay() {
@@ -983,11 +994,13 @@ function viewDay() {
   const pts = dayPoints(day, curDate);
   const total = dayTotal(day, curDate);
   const isToday = curDate === todayKey();
+  const editable = isEditable(curDate);
+  const lock = editable ? '' : 'disabled';
   const counts = {};
   (day.d || []).forEach((x) => { counts[x.q] = (counts[x.q] || 0) + 1; });
 
   const quests = S.quests.map((q) => `
-    <button class="quest ${counts[q.id] ? 'done' : ''} ${counts[q.id] >= QUEST_DAY_LIMIT ? 'maxed' : ''}" data-act="quest" data-id="${q.id}">
+    <button class="quest ${counts[q.id] ? 'done' : ''} ${counts[q.id] >= QUEST_DAY_LIMIT ? 'maxed' : ''}" data-act="quest" data-id="${q.id}" ${lock}>
       ${counts[q.id] ? `<span class="qc">${counts[q.id] > 1 ? '×' + counts[q.id] : '✓'}</span>` : ''}
       <span class="qi">${ico(q.icon)}</span>
       <span class="qn">${esc(q.name)}</span>
@@ -996,8 +1009,15 @@ function viewDay() {
 
   const bcounts = {};
   (day.b || []).forEach((x) => { bcounts[x.q] = (bcounts[x.q] || 0) + 1; });
-  const debuffs = (S.debuffs || []).map((q) => `
-    <button class="quest debuff ${bcounts[q.id] ? 'done' : ''}" data-act="debuff" data-id="${q.id}">
+  // Частые слабости (за 30 дней и сегодняшние) — сразу, остальные — по кнопке «Показать все».
+  const recent = new Set(Object.keys(bcounts));
+  for (let i = 1; i <= 30; i++) for (const x of (getDay(addDays(curDate, -i)) || {}).b || []) recent.add(x.q);
+  let primary = (S.debuffs || []).filter((q) => recent.has(q.id));
+  if (primary.length < 4) primary = [...primary, ...(S.debuffs || []).filter((q) => !recent.has(q.id)).slice(0, 4 - primary.length)];
+  const shown = showAllWeak ? (S.debuffs || []) : primary;
+  const hiddenWeak = (S.debuffs || []).length - shown.length;
+  const debuffs = shown.map((q) => `
+    <button class="quest debuff ${bcounts[q.id] ? 'done' : ''}" data-act="debuff" data-id="${q.id}" ${lock}>
       ${bcounts[q.id] ? `<span class="qc">${bcounts[q.id] > 1 ? '×' + bcounts[q.id] : '!'}</span>` : ''}
       <span class="qi">${ico(q.icon)}</span>
       <span class="qn">${esc(q.name)}</span>
@@ -1007,7 +1027,7 @@ function viewDay() {
     <div class="done-item bad">
       <span class="qi">${ico(x.i)}</span>
       <div class="grow"><div style="font-weight:600;font-size:14px">${esc(x.n)}${x.by ? `<span class="tag shamewk">донос · ${esc(x.by)}</span>` : ''}</div><span class="small muted">${Object.entries(x.c || {}).filter(([cid]) => counterById(cid)).map(([cid, v]) => `${esc(counterById(cid).name)} +${fmtNum(v)}`).join(' · ') || 'без последствий'}</span></div>
-      <button class="icon-btn" data-act="undo-debuff" data-idx="${i}" aria-label="Отменить">✕</button>
+      ${editable ? `<button class="icon-btn" data-act="undo-debuff" data-idx="${i}" aria-label="Отменить">✕</button>` : ''}
     </div>`).join('');
   const courtRow = (x) => `
     <div class="done-item ${x.kind === 'praise' ? '' : 'bad'}">
@@ -1026,7 +1046,7 @@ function viewDay() {
     <div class="done-item">
       <span class="qi">${ico(x.i)}</span>
       <div class="grow"><div style="font-weight:600;font-size:14px">${esc(x.n)}${x.by ? `<span class="tag lg">лига · ${esc(x.by)}</span>` : ''}</div><span class="qr" style="margin-top:3px">${rewardsHTML(x.r)}</span></div>
-      <button class="icon-btn" data-act="undo-quest" data-idx="${i}" aria-label="Отменить">✕</button>
+      ${editable ? `<button class="icon-btn" data-act="undo-quest" data-idx="${i}" aria-label="Отменить">✕</button>` : ''}
     </div>`).join('');
 
   const dc = dayCounters(day);
@@ -1035,13 +1055,13 @@ function viewDay() {
       const c = counterById(id), manual = (day.c || {})[id] || 0;
       return `<div class="prog-item"><div class="sico" style="color:${sphereById(c.sphere).color}">${ico(c.icon)}</div>
         <div class="grow"><div class="sn">${esc(c.name)}</div><div class="sx">+${fmtNum(v)} ${c.unit}${c.auto ? ' · суд лиги' : manual !== v ? ' · из подвигов ' + fmtNum(round1(v - manual)) : ''}</div></div>
-        ${manual ? `<button class="icon-btn" data-act="rm-counter" data-id="${id}" aria-label="Убрать">✕</button>` : ''}</div>`;
+        ${manual && editable ? `<button class="icon-btn" data-act="rm-counter" data-id="${id}" aria-label="Убрать">✕</button>` : ''}</div>`;
     }),
     ...(day.ms || []).filter(milestoneById).map((id) => {
       const m = milestoneById(id);
       return `<div class="prog-item"><div class="sico ms" style="color:var(--am)">${ico(m.icon)}</div>
         <div class="grow"><div class="sn">${esc(m.name)}</div><div class="sx">веха · ${esc(m.desc)}</div></div>
-        <button class="icon-btn" data-act="rm-ms" data-id="${id}" aria-label="Убрать">✕</button></div>`;
+        ${editable ? `<button class="icon-btn" data-act="rm-ms" data-id="${id}" aria-label="Убрать">✕</button>` : ''}</div>`;
     }),
   ].join('');
 
@@ -1050,7 +1070,7 @@ function viewDay() {
     <div class="done-item">
       <span class="qi" style="color:${s.color}">${ico(s.icon)}</span>
       <div class="grow"><div style="font-weight:600;font-size:14px">${esc(s.name)} <span class="${day.m[s.id] > 0 ? 'today-plus' : 'today-minus'}">${sign(day.m[s.id])}</span></div><span class="small muted">начислено ИИ-отчётом</span></div>
-      <button class="icon-btn" data-act="rm-points" data-id="${s.id}" aria-label="Убрать">✕</button>
+      ${editable ? `<button class="icon-btn" data-act="rm-points" data-id="${s.id}" aria-label="Убрать">✕</button>` : ''}
     </div>`).join('');
 
   return `
@@ -1061,17 +1081,21 @@ function viewDay() {
     </div>
     <div class="card sweep center">
       <div class="daytotal ${total < 0 ? 'neg' : ''}" id="daytotal">${total > 0 ? '+' : ''}${total} XP</div>
-      <div class="small muted">${total < 0 ? 'день в минусе — ядро теряет энергию' : total ? 'энергии получено за день' : 'Отметь, что сделал сегодня, — и ядро зарядится'}</div>
+      <div class="small muted">${total < 0 ? 'день в минусе — ядро теряет энергию' : total ? 'энергии получено за день' : editable ? 'Отметь, что сделал, — и ядро зарядится' : 'в этот день ничего не отмечено'}</div>
       ${loss ? `<div class="lossline">${ico('arrowDown')} потеряно ${loss} XP на клеймах</div>` : ''}
     </div>
-    <button class="cta ai-cta" data-act="ai-open">${ico('mic')} Рассказать о дне ИИ</button>
+    ${!editable ? `<div class="card small lockline">${ico('hourglass')}<span>День закрыт для правок: отмечать можно только сегодня и вчера. Заметку можно дописать.</span></div>`
+      : AI.ready() ? `<button class="cta ai-cta" data-act="ai-open">${ico('mic')} Рассказать о дне ИИ</button>`
+      : `<button class="btn block ai-soft" data-act="ai-setup">${ico('sparkle')} Подключить ИИ-отчёт — рассказывай о дне своими словами</button>`}
     ${progress ? `<h2>Прогресс достижений</h2><div class="card">${progress}</div>` : ''}
     <h2>Подвиги дня</h2>
     <div class="quests">${quests}</div>
     ${done || courtGood ? `<div class="card" style="margin-top:12px">${courtGood}${done}</div>` : ''}
     <h2 class="bad-h">Слабости дня</h2>
-    <div class="small muted" style="margin:-4px 2px 10px">Честно отметь, где сорвался. Слабость копит позор, а параметры падают, когда набирается новая ступень клейма. 14 чистых дней снимают ступень и возвращают очки.</div>
+    <div class="small muted" style="margin:-4px 2px 10px">Слабость копит позор; параметры падают, только когда набирается новая ступень клейма.</div>
     <div class="quests">${debuffs}</div>
+    ${hiddenWeak > 0 ? `<button class="btn block sm" data-act="weak-more" style="margin-top:10px">Показать все слабости (+${hiddenWeak})</button>`
+      : showAllWeak ? '<button class="btn block sm" data-act="weak-more" style="margin-top:10px">Свернуть</button>' : ''}
     ${bdone || brands ? `<div class="card bad-card" style="margin-top:12px">${brands}${bdone}</div>` : ''}
     ${aiPts ? `<h2>Очки от ИИ</h2><div class="card">${aiPts}</div>` : ''}
     <h2>Заметка дня</h2>
@@ -1251,27 +1275,62 @@ function viewAch() {
   `;
 }
 
+// Настройки: меню разделов и отдельные страницы.
+let settingsPage = null;
+const IS_IOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const IS_STANDALONE = () => window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
+
+function settingsPages() {
+  const th = themeOf(S.settings.theme);
+  return [
+    ['theme', 'Тема оформления', th.name, 'brush'],
+    ['hero', 'Персонаж', S.profile.name, 'star'],
+    ['stats', 'Параметры', `${S.stats.length} ${plural(S.stats.length, 'параметр', 'параметра', 'параметров')}`, 'hex'],
+    ['quests', 'Подвиги', `${S.quests.length} ${plural(S.quests.length, 'подвиг', 'подвига', 'подвигов')}`, 'bolt'],
+    ['debuffs', 'Слабости', `${(S.debuffs || []).length} ${plural((S.debuffs || []).length, 'слабость', 'слабости', 'слабостей')}`, 'skull'],
+    ['ai', 'ИИ-помощник', AI.ready() ? AI.providerName() : 'не подключён', 'sparkle'],
+    ['notify', 'Звук и напоминания', [S.settings.sound ? 'звук вкл.' : 'звук выкл.', S.settings.remind ? 'напоминание ' + S.settings.remindTime : ''].filter(Boolean).join(' · '), 'bolt'],
+    ['data', 'Данные и резервные копии', S.settings.cloudAt ? 'облачная копия ' + timeAgo(S.settings.cloudAt) : 'экспорт, импорт, сброс', 'download'],
+    ...(IS_STANDALONE() ? [] : [['install', 'Установка на телефон', IS_IOS ? 'iPhone · Safari' : 'Android · Chrome', 'upload']]),
+    ['about', 'Как это работает', 'версия ' + APP_VERSION, 'doc'],
+  ];
+}
+
 function viewSettings() {
-  const standalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
+  if (!settingsPage) {
+    return `
+      <h1>Настройки</h1>
+      <div class="card menu">${settingsPages().map(([k, t, sub, icon]) => `
+        <button class="menu-item" data-act="set-page" data-p="${k}">
+          <span class="qi" style="color:${k === 'debuffs' ? 'var(--tox)' : 'var(--ic)'}">${ico(icon)}</span>
+          <span class="grow"><span class="mt">${esc(t)}</span><span class="ms">${esc(sub)}</span></span>
+          <span class="chev">›</span>
+        </button>`).join('')}</div>
+      <div class="ver">LEVEL UP · ВЕРСИЯ ${APP_VERSION} · ${esc(themeOf(S.settings.theme).name.toUpperCase())}</div>`;
+  }
+  const page = settingsPages().find((x) => x[0] === settingsPage) || ['about', 'Настройки'];
   return `
-    <h1>Настройки</h1>
-    <h2>Тема оформления</h2>
+    <button class="backbar" data-act="set-page" data-p="">‹ Настройки</button>
+    <h1>${esc(page[1])}</h1>
+    ${settingsPageHTML(settingsPage)}`;
+}
+
+function settingsPageHTML(k) {
+  if (k === 'theme') return `
     <div class="themes">${THEMES.map((t) => `
       <button class="theme-card ${(S.settings.theme || 'reactor') === t.id ? 'on' : ''}" data-act="theme" data-id="${t.id}">
         <span class="sw" style="background:radial-gradient(circle at 35% 30%, ${t.sw[2]}, ${t.sw[0]} 45%, ${t.sw[1]} 70%, ${t.sw[3]} 100%);--glow:${t.sw[0]}66;--ring:${t.sw[1]}"></span>
         <span class="grow"><span class="tn">${esc(t.name)}</span><span class="td" style="display:block">${esc(t.desc)}</span></span>
         ${(S.settings.theme || 'reactor') === t.id ? `<span class="ck">${ico('check')}</span>` : ''}
-      </button>`).join('')}</div>
-
-    <h2>Персонаж</h2>
+      </button>`).join('')}</div>`;
+  if (k === 'hero') return `
     <div class="card">
       <label class="f" style="margin-top:0">Имя</label>
       <input type="text" id="pname" value="${esc(S.profile.name)}" maxlength="24">
       <label class="f">Символ в ядре</label>
       <div class="picker">${AVATAR_CHOICES.map((a) => `<button data-act="avatar" data-a="${a}" class="${S.profile.avatar === a ? 'sel' : ''}">${ico(a)}</button>`).join('')}</div>
-    </div>
-
-    <h2>Параметры</h2>
+    </div>`;
+  if (k === 'stats') return `
     <div class="card">
       ${S.stats.map((s) => `
         <div class="list-item">
@@ -1281,8 +1340,18 @@ function viewSettings() {
         </div>`).join('')}
       <button class="btn block" data-act="add-stat" style="margin-top:10px">＋ Добавить параметр</button>
     </div>
-
-    <h2>Подвиги</h2>
+    ${(S.archivedStats || []).length ? `<h2>Скрытые параметры</h2>
+    <div class="card">
+      <div class="small muted" style="margin-bottom:8px">Очки скрытых параметров сохранены — верни параметр, и они снова начнут учитываться.</div>
+      ${S.archivedStats.map((s) => `
+        <div class="list-item">
+          <div class="sico" style="color:${s.color}">${ico(s.icon)}</div>
+          <div class="grow sn">${esc(s.name)}</div>
+          <button class="btn sm" data-act="restore-stat" data-id="${s.id}">Вернуть</button>
+        </div>`).join('')}
+    </div>` : ''}`;
+  if (k === 'quests') return `
+    <div class="small muted" style="margin:-4px 2px 10px">Подвиг даёт до ${QUEST_MAX_REWARD} очков в параметр и засчитывается до ${QUEST_DAY_LIMIT} раз за день.</div>
     <div class="card">
       ${S.quests.map((q) => `
         <div class="list-item">
@@ -1291,9 +1360,9 @@ function viewSettings() {
           <button class="btn sm" data-act="edit-quest" data-id="${q.id}">Изменить</button>
         </div>`).join('')}
       <button class="btn block" data-act="add-quest" style="margin-top:10px">＋ Добавить подвиг</button>
-    </div>
-
-    <h2 class="bad-h">Слабости</h2>
+    </div>`;
+  if (k === 'debuffs') return `
+    <div class="small muted" style="margin:-4px 2px 10px">Слабость копит позор. Параметры, отмеченные здесь, страдают, когда набирается новая ступень клейма.</div>
     <div class="card bad-card">
       ${(S.debuffs || []).map((q) => `
         <div class="list-item">
@@ -1302,51 +1371,57 @@ function viewSettings() {
           <button class="btn sm" data-act="edit-quest" data-kind="debuff" data-id="${q.id}">Изменить</button>
         </div>`).join('')}
       <button class="btn block" data-act="add-quest" data-kind="debuff" style="margin-top:10px">＋ Добавить слабость</button>
-    </div>
-
-    <h2>ИИ-помощник</h2>
-    ${aiSettingsHTML()}
-
-    <h2>Звук</h2>
+    </div>`;
+  if (k === 'ai') return aiSettingsHTML();
+  if (k === 'notify') return `
     <div class="card row between">
-      <div><div style="font-weight:600">Звуковые эффекты</div><div class="small muted">На iPhone молчат в беззвучном режиме</div></div>
+      <div><div style="font-weight:600">Звуковые эффекты</div><div class="small muted">${IS_IOS ? 'На iPhone молчат в беззвучном режиме' : 'Громкость — как у мультимедиа'}</div></div>
       <button class="switch ${S.settings.sound ? 'on' : ''}" data-act="sound" aria-label="Звук"><i></i></button>
     </div>
-
-    <h2>Данные</h2>
+    ${notifyHTML()}`;
+  if (k === 'data') return `
+    ${cloudHTML()}
+    <h2>Файл резервной копии</h2>
     <div class="card">
-      <div class="small muted" style="margin-bottom:10px">Данные хранятся только на этом телефоне. Время от времени делай резервную копию.</div>
+      <div class="small muted" style="margin-bottom:10px">Скачай копию в файл — её можно открыть на другом телефоне через «Импорт».</div>
       <div class="row">
         <button class="btn grow" data-act="export">${ico('upload')} Экспорт</button>
         <button class="btn grow" data-act="import">${ico('download')} Импорт</button>
       </div>
       <input type="file" id="importfile" accept="application/json,.json,text/plain" class="hidden">
-      <button class="btn danger block" data-act="reset" style="margin-top:10px">Начать заново</button>
+    </div>
+    <h2 class="bad-h">Опасная зона</h2>
+    <div class="card"><button class="btn danger block" data-act="reset">Начать заново…</button></div>`;
+  if (k === 'install') return IS_IOS ? `
+    <div class="card small">
+      1. Открой эту страницу в <b>Safari</b>.<br>
+      2. Нажми <b>«Поделиться»</b> (квадрат со стрелкой).<br>
+      3. Выбери <b>«На экран „Домой“»</b>.<br>
+      <span class="muted">Приложение будет открываться на весь экран, работать без интернета и сможет присылать напоминания.</span>
+    </div>` : `
+    <div class="card small">
+      1. Открой эту страницу в <b>Chrome</b>.<br>
+      2. Нажми <b>⋮</b> в правом верхнем углу.<br>
+      3. Выбери <b>«Установить приложение»</b> (или «Добавить на главный экран»).<br>
+      <span class="muted">Приложение появится среди остальных, будет работать без интернета и сможет присылать напоминания.</span>
+    </div>`;
+  return `
+    <div class="card small muted">
+      Каждый вечер отмечай подвиги или расскажи о дне ИИ — он начислит очки за то, что не покрывают подвиги. Вручную очки параметрам не начисляются.
+      Чтобы параметр перешёл с уровня N на N+1, нужно 10×N очков: первые уровни даются быстро, дальше нужна регулярность.
+      Уровень персонажа растёт от суммы всех очков. Серия — сколько дней подряд ты прокачивался.
+      Отмечать можно сегодня и вчера; более ранние дни закрыты для правок. До 4 утра «Итоги» открываются на вчерашнем дне.
+      Слабости копят позор: параметры падают, когда набирается новая ступень клейма, а 14 чистых дней снимают ступень и возвращают очки.
     </div>
     <div class="row between small muted" style="margin-top:14px;padding:0 2px">
       <span>Версия приложения ${APP_VERSION}</span>
       <button class="btn sm" data-act="app-update">Проверить обновление</button>
     </div>
-
-    ${standalone ? '' : `
-    <h2>Установка на iPhone</h2>
-    <div class="card small">
-      1. Открой эту страницу в <b>Safari</b>.<br>
-      2. Нажми <b>«Поделиться»</b> (квадрат со стрелкой).<br>
-      3. Выбери <b>«На экран „Домой“»</b>.<br>
-      <span class="muted">Приложение будет открываться на весь экран и работать без интернета.</span>
-    </div>`}
-
-    <h2>Как это работает</h2>
-    <div class="card small muted">
-      Каждый вечер отмечай подвиги или расскажи о дне ИИ — он начислит очки за то, что не покрывают подвиги. Вручную очки параметрам не начисляются.
-      Чтобы параметр перешёл с уровня N на N+1, нужно 10×N очков: первые уровни даются быстро, дальше нужна регулярность.
-      Уровень персонажа растёт от суммы всех очков. Серия — сколько дней подряд ты прокачивался.
-      Подвиги, ИИ-отчёт и кнопка «+» у цепочек двигают счётчики достижений: книги, километры, знакомства и т.д.
-    </div>
-    <div class="ver">LEVEL UP · ВЕРСИЯ ${APP_VERSION} · ${esc(themeOf(S.settings.theme).name.toUpperCase())}</div>
-  `;
+    <button class="btn block" data-act="show-onboarding" style="margin-top:12px">Показать знакомство заново</button>`;
 }
+// Заполняются ниже (напоминания и облачная копия).
+function notifyHTML() { return typeof pushSettingsHTML === 'function' ? pushSettingsHTML() : ''; }
+function cloudHTML() { return typeof cloudSettingsHTML === 'function' ? cloudSettingsHTML() : ''; }
 
 /* ---------------------- Лига друзей ---------------------- */
 
@@ -1714,7 +1789,7 @@ function applyVerdicts(board) {
           const local = list.find((y) => y.id === x.id) || x;
           return { q: local.id, n: local.name || x.n, i: local.icon || x.i, r: capRewards(local.rewards || x.r || {}), c: clone(local.c || {}), ...tag };
         };
-        (d.q || []).forEach((x) => { for (let i = 0; i < clamp(x.k || 1, 1, 5); i++) day.d.push(item(x, S.quests)); });
+        (d.q || []).forEach((x) => { const room = Math.max(0, QUEST_DAY_LIMIT - day.d.filter((z) => z.q === x.id).length); for (let i = 0; i < Math.min(clamp(x.k || 1, 1, 5), room); i++) day.d.push(item(x, S.quests)); });
         (d.b || []).forEach((x) => { for (let i = 0; i < clamp(x.k || 1, 1, 5); i++) day.b.push(item(x, S.debuffs || [])); });
         (d.s || []).forEach((x) => { if (statById(x.id) && x.p > 0) day.m[x.id] = clamp((day.m[x.id] || 0) + Math.min(10, x.p), -50, 99); });
         (d.c || []).forEach((x) => { if (counterById(x.id) && x.a > 0) day.c[x.id] = round1((day.c[x.id] || 0) + Math.min(1000, x.a)); });
@@ -2383,7 +2458,9 @@ function aiApply() {
     r.quests.forEach((x) => {
       if (!ai.sel['q:' + x.id]) return;
       const q = S.quests.find((y) => y.id === x.id);
-      for (let i = 0; i < x.count; i++) day.d.push({ q: q.id, n: q.name, i: q.icon, r: clone(q.rewards), c: clone(q.c || {}) });
+      const room = Math.max(0, QUEST_DAY_LIMIT - day.d.filter((z) => z.q === q.id).length);   // лимит 3 в день — и для ИИ
+      x.count = Math.min(x.count, room);
+      for (let i = 0; i < x.count; i++) day.d.push({ q: q.id, n: q.name, i: q.icon, r: capRewards(q.rewards), c: clone(q.c || {}) });
       Object.entries(q.rewards).forEach(([k, v]) => { gained[k] = (gained[k] || 0) + v * x.count; });
     });
     (r.debuffs || []).forEach((x) => {
@@ -2399,7 +2476,7 @@ function aiApply() {
       if (!day.m[x.id]) delete day.m[x.id];
       gained[x.id] = (gained[x.id] || 0) + x.points;
     });
-    r.counters.forEach((x) => { if (ai.sel['c:' + x.id]) day.c[x.id] = round1((day.c[x.id] || 0) + x.amount); });
+    r.counters.forEach((x) => { const c = counterById(x.id); if (ai.sel['c:' + x.id] && c) day.c[x.id] = round1(Math.min(counterDayCap(c), (day.c[x.id] || 0) + x.amount)); });
     r.milestones.forEach((x) => { if (ai.sel['m:' + x.id] && !day.ms.includes(x.id)) day.ms.push(x.id); });
     (r.newCounters || []).forEach((x, i) => {
       if (!ai.sel['nc:' + i]) return;
@@ -2556,7 +2633,8 @@ document.addEventListener('click', (e) => {
   const tb = e.target.closest('#tabbar button');
   if (tb) {
     SFX.play('tab');
-    if (tb.dataset.tab === 'day') curDate = todayKey();
+    if (tb.dataset.tab === 'day') curDate = reportDay();
+    if (tb.dataset.tab === 'settings') settingsPage = null;
     go(tb.dataset.tab);
     if (tb.dataset.tab === 'league') syncNow();
     return;
@@ -2571,16 +2649,18 @@ document.addEventListener('click', (e) => {
   if (snd) SFX.play(snd);
 
   switch (act) {
-    case 'go-today': curDate = todayKey(); go('day'); break;
+    case 'go-today': curDate = reportDay(); go('day'); break;
     case 'prev-day': curDate = addDays(curDate, -1); render(true); break;
     case 'next-day': if (curDate < todayKey()) { curDate = addDays(curDate, 1); render(true); } break;
 
     case 'rm-points':
+      if (!isEditable(curDate)) break;
       mutate(() => { const day = ensureDay(curDate); delete day.m[id]; });
       break;
     case 'quest': {
       const q = S.quests.find((x) => x.id === id);
       if (!q) break;
+      if (!isEditable(curDate)) { toast('Этот день закрыт: отмечать можно сегодня и вчера'); SFX.play('error'); break; }
       const [x, y] = [e.clientX || centerOf(el)[0], e.clientY || centerOf(el)[1]];
       if ((getDay(curDate) || { d: [] }).d.filter((z) => z.q === q.id).length >= QUEST_DAY_LIMIT) {
         toast(`«${q.name}» — не больше ${QUEST_DAY_LIMIT} раз за день`); SFX.play('error'); break;
@@ -2597,6 +2677,7 @@ document.addEventListener('click', (e) => {
     case 'debuff': {
       const q = (S.debuffs || []).find((x) => x.id === id);
       if (!q) break;
+      if (!isEditable(curDate)) { toast('Этот день закрыт: отмечать можно сегодня и вчера'); SFX.play('error'); break; }
       const [x, y] = [e.clientX || centerOf(el)[0], e.clientY || centerOf(el)[1]];
       LEAGUE.push({ kind: 'debuff', text: `сорвался: ${q.name}`, icon: q.icon });
       const nBefore = brandEvents(curDate).length;
@@ -2613,9 +2694,11 @@ document.addEventListener('click', (e) => {
       break;
     }
     case 'undo-debuff':
+      if (!isEditable(curDate)) break;
       mutate(() => { ensureDay(curDate).b.splice(Number(el.dataset.idx), 1); });
       break;
     case 'undo-quest':
+      if (!isEditable(curDate)) break;
       mutate(() => { ensureDay(curDate).d.splice(Number(el.dataset.idx), 1); });
       break;
     case 'open-day': curDate = el.dataset.k; go('day'); break;
@@ -2687,11 +2770,22 @@ ${LEAGUE.invite(c)}`, 'Приглашение скопировано');
       break;
     }
     case 'del-stat':
-      if (confirm('Удалить параметр? Накопленные очки этого параметра перестанут учитываться.')) {
+      if (confirm('Скрыть параметр? Его очки сохранятся, и параметр можно будет вернуть в «Настройки → Параметры».')) {
+        const st = statById(id);
+        S.archivedStats = [...(S.archivedStats || []).filter((x) => x.id !== id), st];
         S.stats = S.stats.filter((s) => s.id !== id);
         save(); closeSheet(); render(false);
       }
       break;
+    case 'restore-stat': {
+      const st = (S.archivedStats || []).find((x) => x.id === id);
+      if (!st) break;
+      S.archivedStats = S.archivedStats.filter((x) => x.id !== id);
+      S.stats.push(st);
+      mutate(() => {});
+      toast(`«${st.name}» снова в строю`, 'gold', st.icon);
+      break;
+    }
 
     case 'edit-quest': questEditor(id, el.dataset.kind); break;
     case 'add-quest': questEditor(null, el.dataset.kind); break;
@@ -2751,6 +2845,12 @@ ${LEAGUE.invite(c)}`, 'Приглашение скопировано');
       let n = el.dataset.n === 'custom' ? parseFloat(($('#counter-n').value || '').replace(',', '.')) : Number(el.dataset.n);
       if (!n || !isFinite(n)) { toast('Введи число'); break; }
       n = clamp(round1(n), -1000, 1000);
+      const cc = counterById(id), cap = counterDayCap(cc), have = ((getDay(todayKey()) || {}).c || {})[id] || 0;
+      if (n > 0 && have + n > cap) {
+        if (have >= cap) { toast(`За день вручную — не больше ${fmtNum(cap)} ${cc.unit}`); SFX.play('error'); break; }
+        n = round1(cap - have);
+        toast(`Добавлено ${fmtNum(n)} ${cc.unit}: за день вручную не больше ${fmtNum(cap)}`);
+      }
       const [x, y] = centerOf(el);
       mutate(() => {
         const day = ensureDay(todayKey());
@@ -2789,17 +2889,23 @@ ${LEAGUE.invite(c)}`, 'Приглашение скопировано');
       burst(innerWidth / 2, innerHeight * 0.4, 14);
       break;
     }
-    case 'rm-ms':
+    case 'rm-ms': {
+      const when = Object.keys(S.log).filter((k) => (S.log[k].ms || []).includes(id));
+      if (when.some((k) => !isEditable(k))) { toast('Веха открыта давно — убрать её уже нельзя'); SFX.play('error'); break; }
       if (el.dataset.sheet) closeSheet();
       mutate(() => { for (const k in S.log) if (S.log[k].ms) S.log[k].ms = S.log[k].ms.filter((m) => m !== id); });
       break;
+    }
+    case 'weak-more': showAllWeak = !showAllWeak; render(false); break;
     case 'rm-counter':
+      if (!isEditable(curDate)) break;
       mutate(() => { delete ensureDay(curDate).c[id]; });
       break;
 
     /* --- ИИ --- */
-    case 'ai-open': aiOpen(); break;
-    case 'ai-setup': closeSheet(); go('settings'); setTimeout(() => { const h = [...document.querySelectorAll('#view h2')].find((x) => x.textContent.includes('ИИ')); if (h) h.scrollIntoView({ behavior: 'smooth' }); }, 100); break;
+    case 'ai-open': if (!isEditable(curDate)) { toast('Этот день закрыт: отчёт можно составить за сегодня или вчера'); break; } aiOpen(); break;
+    case 'ai-setup': closeSheet(); settingsPage = 'ai'; go('settings'); break;
+    case 'set-page': settingsPage = el.dataset.p || null; render(true); window.scrollTo(0, 0); break;
     case 'ai-send': aiSend(); break;
     case 'ai-back': ai.phase = 'input'; aiRender(); break;
     case 'ai-apply': aiApply(); break;
@@ -2848,9 +2954,24 @@ ${LEAGUE.invite(c)}`, 'Приглашение скопировано');
     case 'app-update': checkUpdate(true); break;
     case 'import': $('#importfile').click(); break;
     case 'reset':
-      if (confirm('Удалить весь прогресс и начать заново? Это нельзя отменить.')) {
-        S = defaultState(); save(); go('hero');
-      }
+      openSheet(`
+        <h1>Начать заново?</h1>
+        <div class="muted">Будут удалены все дни, очки, достижения, клейма и настройки параметров. Отменить это нельзя.</div>
+        <div class="card" style="margin-top:14px">
+          <div class="small muted" style="margin-bottom:10px">Сначала сохрани копию — по ней всё можно вернуть через «Импорт».</div>
+          <button class="btn block" data-act="export">${ico('upload')} Скачать резервную копию</button>
+        </div>
+        <label class="f">Чтобы подтвердить, напиши слово УДАЛИТЬ</label>
+        <input type="text" id="reset-word" autocomplete="off" autocapitalize="characters" placeholder="УДАЛИТЬ">
+        <div class="row" style="margin-top:16px">
+          <button class="btn grow" data-act="close-sheet">Отмена</button>
+          <button class="btn danger grow" data-act="reset-confirm">Удалить всё</button>
+        </div>`);
+      break;
+    case 'reset-confirm':
+      if (($('#reset-word').value || '').trim().toUpperCase() !== 'УДАЛИТЬ') { toast('Напиши слово УДАЛИТЬ'); SFX.play('error'); break; }
+      S = defaultState(); S.settings.onboarded = true; save(); closeSheet(); settingsPage = null; go('hero');
+      toast('Прогресс удалён. Начинаем с чистого листа', 'gold', 'sparkle');
       break;
   }
 });
@@ -2891,7 +3012,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
   scheduleSync(300);
   if (todayKey() !== lastToday) {
-    if (curDate === lastToday) curDate = todayKey();
+    if (curDate === lastToday) curDate = reportDay();
     lastToday = todayKey();
     render(false);
   }

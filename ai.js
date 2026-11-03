@@ -192,7 +192,7 @@ ${catalogue(S)}`;
     const qMap = {};
     arr(r.quests).forEach((x) => {
       if (!x || !S.quests.find((q) => q.id === x.id)) return;
-      qMap[x.id] = Math.min(5, (qMap[x.id] || 0) + Math.max(1, Math.round(Number(x.count) || 1)));
+      qMap[x.id] = Math.min(3, (qMap[x.id] || 0) + Math.max(1, Math.round(Number(x.count) || 1)));   // как и вручную: не больше 3 раз за день
     });
     out.quests = Object.entries(qMap).map(([id, count]) => ({ id, count }));
 
