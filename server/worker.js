@@ -34,9 +34,9 @@ async function sha256(s) {
   return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function readBody(req) {
+async function readBody(req, max = 20000) {
   const text = await req.text();
-  if (text.length > 20000) throw new Error('Слишком большой запрос');
+  if (text.length > max) throw new Error('Слишком большой запрос');
   try { return text ? JSON.parse(text) : {}; } catch (e) { throw new Error('Неверный JSON'); }
 }
 
@@ -75,6 +75,102 @@ async function addEvents(env, league, memberId, events, max = 160) {
     .bind(league, memberId, e.kind, e.text, e.icon, t)));
 }
 
+
+/* ---------- Push-уведомления (Web Push: VAPID + шифрование aes128gcm, RFC 8291/8292) ---------- */
+
+const APP_URL = 'https://skjat.github.io/Game-evolution/';
+const te = new TextEncoder();
+const b64u = {
+  enc: (buf) => { const a = new Uint8Array(buf); let s = ''; for (let i = 0; i < a.length; i++) s += String.fromCharCode(a[i]); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); },
+  dec: (str) => { let s = String(str).replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; return Uint8Array.from(atob(s), (c) => c.charCodeAt(0)); },
+};
+const concat = (...parts) => { const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0)); let o = 0; for (const p of parts) { out.set(p, o); o += p.length; } return out; };
+
+// Ключи VAPID сервер создаёт сам при первом обращении и хранит в базе — секреты настраивать не нужно.
+async function vapidKeys(env) {
+  const get = () => env.DB.prepare("SELECT v FROM config WHERE k = 'vapid'").first();
+  let row = await get();
+  if (!row) {
+    const kp = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+    const v = { priv: await crypto.subtle.exportKey('jwk', kp.privateKey), pub: b64u.enc(await crypto.subtle.exportKey('raw', kp.publicKey)) };
+    await env.DB.prepare("INSERT OR IGNORE INTO config (k, v) VALUES ('vapid', ?)").bind(JSON.stringify(v)).run();
+    row = await get();
+  }
+  return JSON.parse(row.v);
+}
+
+async function vapidAuth(endpoint, keys) {
+  const head = b64u.enc(te.encode(JSON.stringify({ typ: 'JWT', alg: 'ES256' })));
+  const body = b64u.enc(te.encode(JSON.stringify({ aud: new URL(endpoint).origin, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: APP_URL })));
+  const key = await crypto.subtle.importKey('jwk', { ...keys.priv, key_ops: ['sign'] }, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, te.encode(head + '.' + body));
+  return `vapid t=${head}.${body}.${b64u.enc(sig)}, k=${keys.pub}`;
+}
+
+async function hkdf(salt, ikm, info, len) {
+  const k = await crypto.subtle.importKey('raw', ikm, 'HKDF', false, ['deriveBits']);
+  return new Uint8Array(await crypto.subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt, info }, k, len * 8));
+}
+
+// Шифрование содержимого push по RFC 8291 (aes128gcm). test: фиксированные ключ и соль для проверки по примеру из RFC.
+export async function encryptPush(sub, payload, test = null) {
+  const uaPub = b64u.dec(sub.p256dh), authSecret = b64u.dec(sub.auth);
+  let asPriv, asPub;
+  if (test) {
+    asPub = b64u.dec(test.asPublic);
+    asPriv = await crypto.subtle.importKey('jwk', { kty: 'EC', crv: 'P-256', d: test.asPrivate, x: b64u.enc(asPub.slice(1, 33)), y: b64u.enc(asPub.slice(33, 65)) }, { name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits']);
+  } else {
+    const kp = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+    asPriv = kp.privateKey; asPub = new Uint8Array(await crypto.subtle.exportKey('raw', kp.publicKey));
+  }
+  const uaKey = await crypto.subtle.importKey('raw', uaPub, { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+  const ecdh = new Uint8Array(await crypto.subtle.deriveBits({ name: 'ECDH', public: uaKey }, asPriv, 256));
+  const ikm = await hkdf(authSecret, ecdh, concat(te.encode('WebPush: info\0'), uaPub, asPub), 32);
+  const salt = test ? b64u.dec(test.salt) : crypto.getRandomValues(new Uint8Array(16));
+  const cek = await hkdf(salt, ikm, te.encode('Content-Encoding: aes128gcm\0'), 16);
+  const nonce = await hkdf(salt, ikm, te.encode('Content-Encoding: nonce\0'), 12);
+  const key = await crypto.subtle.importKey('raw', cek, 'AES-GCM', false, ['encrypt']);
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, key, concat(te.encode(payload), new Uint8Array([2]))));
+  const header = new Uint8Array(21 + asPub.length);
+  header.set(salt, 0); new DataView(header.buffer).setUint32(16, 4096); header[20] = asPub.length; header.set(asPub, 21);
+  return concat(header, ct);
+}
+
+async function sendPush(env, sub, msg) {
+  try {
+    const keys = await vapidKeys(env);
+    const res = await fetch(sub.endpoint, {
+      method: 'POST',
+      headers: { 'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream', TTL: '43200', Urgency: 'normal', Authorization: await vapidAuth(sub.endpoint, keys) },
+      body: await encryptPush(sub, JSON.stringify(msg)),
+    });
+    if (res.status === 404 || res.status === 410) await env.DB.prepare('DELETE FROM push_subs WHERE endpoint = ?').bind(sub.endpoint).run();
+    return res.status;
+  } catch (e) { return 0; }
+}
+async function pushMembers(env, ids, msg, courtOnly = true) {
+  if (!ids.length) return;
+  const subs = (await env.DB.prepare(`SELECT * FROM push_subs WHERE member IN (${ids.map(() => '?').join(',')})${courtOnly ? ' AND court = 1' : ''}`).bind(...ids).all()).results;
+  await Promise.all(subs.map((s) => sendPush(env, s, msg)));
+}
+const later = (ctx, p) => { if (ctx && ctx.waitUntil) ctx.waitUntil(p); else return p; };
+
+// Вечернее напоминание: раз в 15 минут ищем тех, у кого по их местному времени наступил час напоминания.
+async function remindTick(env) {
+  const subs = (await env.DB.prepare("SELECT s.*, m.profile FROM push_subs s JOIN members m ON m.id = s.member WHERE s.remind != ''").all()).results;
+  for (const s of subs) {
+    const local = new Date(Date.now() - s.tz * 60000);
+    const day = local.toISOString().slice(0, 10), hm = local.toISOString().slice(11, 16);
+    if (hm < s.remind || s.last_remind === day) continue;
+    const [h, m] = s.remind.split(':').map(Number);
+    if (local.getUTCHours() * 60 + local.getUTCMinutes() - (h * 60 + m) > 180) continue;   // опоздали больше чем на 3 часа — пропускаем
+    await env.DB.prepare('UPDATE push_subs SET last_remind = ? WHERE endpoint = ?').bind(day, s.endpoint).run();
+    let p = {}; try { p = JSON.parse(s.profile || '{}'); } catch (e) { /* ignore */ }
+    if (p.lastLog === day) continue;   // сегодня уже отчитался
+    await sendPush(env, s, { title: 'Level Up', body: p.streak > 1 ? `Подведи итоги дня — не теряй серию в ${p.streak} дн.` : 'Подведи итоги дня — ядро ждёт заряда', url: '#day', tag: 'remind' });
+  }
+}
+
 /* ---------- Суд лиги ---------- */
 
 // Кто голосует: все, кроме того, о ком отчёт. Если в лиге только двое — решают оба.
@@ -103,6 +199,7 @@ async function resolve(env, p) {
   await env.DB.prepare('UPDATE proposals SET status = ?, resolved_at = ? WHERE id = ? AND status = ?').bind(status, now(), p.id, 'pending').run();
   if (status === 'approved') {
     await addEvents(env, p.league, p.target, [{ kind: 'verdict', text: `по решению лиги (${p.kind === 'praise' ? 'похвала' : 'донос'}): ${p.summary}`, icon: p.kind === 'praise' ? 'medal' : 'balance' }], 420);
+    await pushMembers(env, [p.target], { title: p.kind === 'praise' ? 'Лига утвердила похвалу' : 'Лига утвердила донос', body: p.summary, url: '#day', tag: 'verdict-' + p.id });
   } else if (status === 'rejected' && p.kind === 'complaint') {
     await addEvents(env, p.league, p.target, [{ kind: 'verdict', text: `оправдан судом лиги: ${p.summary}`, icon: 'balance' }], 420);
   }
@@ -162,10 +259,11 @@ async function board(env, me) {
   ).bind(me.league).all()).results.map((i) => ({ ...i, data: JSON.parse(i.data || '{}') }));
   // Основатель — самый давний участник (создатель лиги; если он ушёл — следующий по стажу).
   const owner = members.length ? members[0].id : null;
-  return { league, me: me.id, owner, members, feed, items, proposals, serverTime: now() };
+  const bk = await env.DB.prepare('SELECT updated_at FROM backups WHERE member = ?').bind(me.id).first();
+  return { league, me: me.id, owner, members, feed, items, proposals, backupAt: bk ? bk.updated_at : 0, serverTime: now() };
 }
 
-async function route(req, env) {
+async function route(req, env, ctx) {
   const url = new URL(req.url);
   const path = url.pathname.replace(/\/+$/, '');
   const method = req.method;
@@ -290,7 +388,11 @@ async function route(req, env) {
     ]);
     await addEvents(env, me.league, me.id, [{ kind: 'report', text: `${kind === 'praise' ? 'похвалил' : 'донёс'}: ${target.name} — ${summary}`, icon: kind === 'praise' ? 'medal' : 'skull' }], 420);
     const p = await env.DB.prepare('SELECT * FROM proposals WHERE id = ?').bind(id).first();
-    await resolve(env, p);
+    const res = await resolve(env, p);
+    if (res.status === 'pending') {
+      const { el } = await voters(env, me.league, target.id);
+      await pushMembers(env, el.filter((x) => x !== me.id), { title: `Суд лиги: ${kind === 'praise' ? 'похвала' : 'донос'}`, body: `${me.name} → ${target.name}: ${summary}`.slice(0, 180) + ' Нужен твой голос.', url: '#league', tag: 'court-' + id });
+    }
     return json(await board(env, me));
   }
 
@@ -324,6 +426,45 @@ async function route(req, env) {
     return json({ ok: true });
   }
 
+  // Облачная копия: телефон присылает уже зашифрованные данные
+  if (path === '/api/backup' && method === 'POST') {
+    const body = await readBody(req, 2000000);
+    const data = typeof body.data === 'string' ? body.data : '';
+    if (!data || data.length > 1500000) return fail('Копия пустая или слишком большая');
+    const t = now();
+    await env.DB.prepare('INSERT OR REPLACE INTO backups (member, data, size, updated_at) VALUES (?, ?, ?, ?)').bind(me.id, data, data.length, t).run();
+    return json({ ok: true, updated_at: t });
+  }
+  if (path === '/api/backup' && method === 'GET') {
+    const row = await env.DB.prepare('SELECT data, updated_at FROM backups WHERE member = ?').bind(me.id).first();
+    if (!row) return fail('Облачной копии пока нет', 404);
+    return json(row);
+  }
+
+  // Push: ключ сервера, подписка и отписка
+  if (path === '/api/push/key' && method === 'GET') return json({ key: (await vapidKeys(env)).pub });
+  if (path === '/api/push/subscribe' && method === 'POST') {
+    const body = await readBody(req);
+    const sub = body.sub || {};
+    const endpoint = clip(sub.endpoint, 1000), p256dh = clip(sub.keys && sub.keys.p256dh, 200), auth = clip(sub.keys && sub.keys.auth, 100);
+    if (!/^https:\/\//.test(endpoint) || !p256dh || !auth) return fail('Неверная подписка');
+    const remind = /^\d{2}:\d{2}$/.test(body.remind || '') ? body.remind : '';
+    const tz = Math.max(-840, Math.min(840, Math.round(Number(body.tz) || 0)));
+    const old = await env.DB.prepare('SELECT last_remind FROM push_subs WHERE endpoint = ?').bind(endpoint).first();
+    await env.DB.prepare('INSERT OR REPLACE INTO push_subs (endpoint, member, p256dh, auth, remind, tz, court, last_remind, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(endpoint, me.id, p256dh, auth, remind, tz, body.court === false ? 0 : 1, old ? old.last_remind : '', now()).run();
+    return json({ ok: true });
+  }
+  if (path === '/api/push/unsubscribe' && method === 'POST') {
+    const body = await readBody(req);
+    await env.DB.prepare('DELETE FROM push_subs WHERE endpoint = ? AND member = ?').bind(clip(body.endpoint, 1000), me.id).run();
+    return json({ ok: true });
+  }
+  if (path === '/api/push/test' && method === 'POST') {
+    await pushMembers(env, [me.id], { title: 'Level Up', body: 'Уведомления работают — до встречи вечером!', url: '#day', tag: 'test' }, false);
+    return json({ ok: true });
+  }
+
   // Основатель исключает участника
   if (path === '/api/kick' && method === 'POST') {
     const body = await readBody(req);
@@ -335,6 +476,8 @@ async function route(req, env) {
     await env.DB.batch([
       env.DB.prepare('DELETE FROM reactions WHERE member = ?').bind(t.id),
       env.DB.prepare('DELETE FROM votes WHERE member = ?').bind(t.id),
+      env.DB.prepare('DELETE FROM backups WHERE member = ?').bind(t.id),
+      env.DB.prepare('DELETE FROM push_subs WHERE member = ?').bind(t.id),
       env.DB.prepare('INSERT INTO events (league, member, kind, text, icon, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(me.league, me.id, 'kick', `исключил из лиги: ${t.name}`, 'arrowDown', now()),
       env.DB.prepare('DELETE FROM members WHERE id = ?').bind(t.id),
     ]);
@@ -346,6 +489,8 @@ async function route(req, env) {
     await env.DB.batch([
       env.DB.prepare('DELETE FROM reactions WHERE member = ?').bind(me.id),
       env.DB.prepare('DELETE FROM votes WHERE member = ?').bind(me.id),
+      env.DB.prepare('DELETE FROM backups WHERE member = ?').bind(me.id),
+      env.DB.prepare('DELETE FROM push_subs WHERE member = ?').bind(me.id),
       env.DB.prepare('INSERT INTO events (league, member, kind, text, icon, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(me.league, null, 'leave', `${me.name} покинул лигу`, 'arrowDown', now()),
       env.DB.prepare('DELETE FROM members WHERE id = ?').bind(me.id),
     ]);
@@ -356,11 +501,16 @@ async function route(req, env) {
 }
 
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     try {
-      return await route(req, env);
+      return await route(req, env, ctx);
     } catch (e) {
       return fail(e && e.message ? e.message : 'Ошибка сервера', 500);
     }
+  },
+  // Cloudflare Cron (wrangler.toml): раз в 15 минут — вечерние напоминания.
+  async scheduled(event, env, ctx) {
+    const p = remindTick(env).catch(() => {});
+    if (ctx && ctx.waitUntil) ctx.waitUntil(p); else await p;
   },
 };

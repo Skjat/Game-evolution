@@ -1,5 +1,5 @@
 // Service worker: offline-кэш. При изменении файлов увеличивай VERSION (и APP_VERSION в app.js).
-const VERSION = 'lvlup-v26';
+const VERSION = 'lvlup-v27';
 const ASSETS = [
   './',
   './index.html',
@@ -57,4 +57,27 @@ self.addEventListener('fetch', (e) => {
       })
       .catch(() => caches.match(req).then((r) => r || caches.match('./index.html')))
   );
+});
+
+// Push: вечернее напоминание и события суда лиги (сервер шифрует содержимое, браузер расшифровывает сам).
+self.addEventListener('push', (e) => {
+  let m = {};
+  try { m = e.data ? e.data.json() : {}; } catch (err) { m = { body: e.data && e.data.text() }; }
+  e.waitUntil(self.registration.showNotification(m.title || 'Level Up', {
+    body: m.body || 'Подведи итоги дня',
+    icon: './icons/icon-192.png',
+    badge: './icons/icon-192.png',
+    tag: m.tag || 'levelup',
+    data: { url: m.url || '#day' },
+  }));
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || '#day';
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+    const c = list.find((x) => x.url.startsWith(self.registration.scope));
+    if (c) { c.postMessage({ go: url }); return c.focus(); }
+    return self.clients.openWindow(self.registration.scope + url);
+  }));
 });

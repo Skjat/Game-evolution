@@ -74,3 +74,31 @@ CREATE TABLE IF NOT EXISTS votes (
   created_at INTEGER NOT NULL,
   PRIMARY KEY (proposal, member)
 );
+
+-- Облачная резервная копия игрока (зашифрована на телефоне ключом из токена — сервер её прочитать не может).
+CREATE TABLE IF NOT EXISTS backups (
+  member     TEXT PRIMARY KEY,
+  data       TEXT NOT NULL,
+  size       INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+-- Push-подписки: вечернее напоминание и события суда лиги.
+CREATE TABLE IF NOT EXISTS push_subs (
+  endpoint    TEXT PRIMARY KEY,
+  member      TEXT NOT NULL,
+  p256dh      TEXT NOT NULL,
+  auth        TEXT NOT NULL,
+  remind      TEXT NOT NULL DEFAULT '',   -- 'HH:MM' по местному времени или '' — без напоминания
+  tz          INTEGER NOT NULL DEFAULT 0, -- Date.getTimezoneOffset() телефона, минуты
+  court       INTEGER NOT NULL DEFAULT 1, -- присылать события суда
+  last_remind TEXT NOT NULL DEFAULT '',   -- местная дата последнего напоминания
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS push_member ON push_subs (member);
+
+-- Служебные значения сервера (ключи VAPID для push).
+CREATE TABLE IF NOT EXISTS config (
+  k TEXT PRIMARY KEY,
+  v TEXT NOT NULL
+);

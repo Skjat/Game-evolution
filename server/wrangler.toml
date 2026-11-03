@@ -10,3 +10,7 @@ workers_dev = true
 binding = "DB"
 database_name = "levelup"
 database_id = "__DB_ID__"
+
+# Раз в 15 минут — вечерние напоминания (push). Бесплатный тариф Cloudflare это позволяет.
+[triggers]
+crons = ["*/15 * * * *"]

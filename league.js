@@ -130,6 +130,13 @@ const LEAGUE = (() => {
     set({ board });
     return board;
   }
+  // Облачная копия и push-уведомления
+  const backupPut = (data) => api('/api/backup', { method: 'POST', body: { data } });
+  const backupGet = () => api('/api/backup');
+  const pushKey = () => api('/api/push/key');
+  const pushSubscribe = (sub, opts) => api('/api/push/subscribe', { method: 'POST', body: { sub, ...opts } });
+  const pushUnsubscribe = (endpoint) => api('/api/push/unsubscribe', { method: 'POST', body: { endpoint } });
+  const pushTest = () => api('/api/push/test', { method: 'POST' });
   const markApplied = (id) => api('/api/proposals/applied', { method: 'POST', body: { id } });
 
   async function leave() {
@@ -161,5 +168,5 @@ const LEAGUE = (() => {
     return set({ server: d.s, code: d.c, name: d.n, memberId: d.i, token: d.t, board: null, outbox: [], error: '', lastSync: 0 });
   }
 
-  return { cfg, set, joined, normServer, host, parseInvite, invite, create, join, sync, refresh, react, share, unshare, propose, vote, withdraw, markApplied, kick, leave, push, recoveryCode, restore };
+  return { cfg, set, joined, normServer, host, parseInvite, invite, create, join, sync, refresh, react, share, unshare, propose, vote, withdraw, markApplied, kick, backupPut, backupGet, pushKey, pushSubscribe, pushUnsubscribe, pushTest, leave, push, recoveryCode, restore };
 })();

@@ -6,7 +6,7 @@
    ===================================================================== */
 
 const STORAGE_KEY = 'lvlup.v1';
-const APP_VERSION = 26;
+const APP_VERSION = 27;
 const EDIT_BACK_DAYS = 1;    // править можно сегодня и вчера; более ранние дни — только чтение
 const NIGHT_HOUR = 4;        // до 4 утра «Итоги» открываются на вчерашнем дне
 const COURT_POINTS = 3;   // штраф суда за утверждённый донос / бонус за похвалу — в каждый связанный параметр (до двух)   // совпадает с номером в sw.js (lvlup-vN)
@@ -1455,7 +1455,7 @@ function leagueProfile() {
     streak: currentStreak(), best: bestStreak(), ach: all.filter((a) => a.kind !== 'shame' && a.ok).length,
     shame: all.filter((a) => a.kind === 'shame' && a.ok).length, shameTitles,
     stats: S.stats.slice(0, 8).map((s) => ({ n: s.name, i: s.icon, c: s.color, l: levelInfo(xp[s.id], STAT_K).level })),
-    src, today: dayTotal(getDay(t), t), day: t,
+    src, today: dayTotal(getDay(t), t), day: t, lastLog: Object.keys(S.log).filter((k) => k <= t && isLogged(S.log[k])).sort().pop() || '',
   };
 }
 
@@ -1472,6 +1472,7 @@ async function syncNow() {
     const board = await LEAGUE.sync({ name: S.profile.name, avatar: S.profile.avatar, profile: leagueProfile() });
     if (applySharedItems(board) && tab === 'ach') render(false);
     applyVerdicts(board);
+    setTimeout(() => cloudSave(false), 1500);
   } catch (e) {
     LEAGUE.set({ error: e.status === 401 ? 'Тебя нет в этой лиге: тебя исключили или доступ потерян. Покинь лигу и вступи заново по приглашению или восстанови доступ кодом' : e.message });
   }
@@ -2722,7 +2723,7 @@ document.addEventListener('click', (e) => {
       leagueAction(() => LEAGUE.join($('#lg-invite').value, $('#lg-server') ? $('#lg-server').value : '', { name: S.profile.name, avatar: S.profile.avatar, profile: leagueProfile() }), 'Ты в лиге!');
       break;
     case 'lg-restore':
-      leagueAction(async () => { LEAGUE.restore($('#lg-restore').value); await LEAGUE.refresh(); }, 'Доступ восстановлен');
+      leagueAction(async () => { LEAGUE.restore($('#lg-restore').value); const bd = await LEAGUE.refresh(); if (bd.backupAt) setTimeout(() => cloudRestore(false), 600); }, 'Доступ восстановлен');
       break;
     case 'lg-invite': {
       const c = LEAGUE.cfg();
@@ -2909,6 +2910,11 @@ ${LEAGUE.invite(c)}`, 'Приглашение скопировано');
       break;
     case 'show-onboarding': onboardingStart(); break;
     case 'weekly': weeklyOpen(el.dataset.k); break;
+    case 'push-remind': pushToggle('remind'); break;
+    case 'push-court': pushToggle('pushCourt'); break;
+    case 'push-test': LEAGUE.pushTest().then(() => toast('Отправлено — уведомление придёт через пару секунд', 'gold', 'bolt')).catch((err) => toast(err.message)); break;
+    case 'cloud-save': cloudSave(true); break;
+    case 'cloud-restore': cloudRestore(true); break;
     case 'weak-more': showAllWeak = !showAllWeak; render(false); break;
     case 'rm-counter':
       if (!isEditable(curDate)) break;
@@ -3012,6 +3018,7 @@ document.addEventListener('change', (e) => {
   if (e.target.id === 'note') { checkAchievements(false); save(); }
   if (e.target.id === 'importfile' && e.target.files[0]) { doImport(e.target.files[0]); e.target.value = ''; }
   if (e.target.id === 'ai-claude-model') AI.setCfg({ claudeModel: e.target.value });
+  if (e.target.id === 'remind-time' && /^\d{2}:\d{2}$/.test(e.target.value)) { S.settings.remindTime = e.target.value; save(); pushSync(true); }
   if (e.target.id === 'qc-add' && e.target.value) {
     const cid = e.target.value;
     if (!$('#qc-' + cid)) $('#qc-list').insertAdjacentHTML('beforeend', qcRow(cid, 1));
@@ -3071,6 +3078,140 @@ function applyTheme(id, opts = {}) {
     save();
     scheduleSync();
   }
+}
+
+
+/* ---------------------- Облачная копия (через сервер лиги, зашифрована) ---------------------- */
+
+const CLOUD_EVERY = 2 * 3600e3;   // автоматически — не чаще раза в 2 часа
+const bytesB64 = (u8) => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode(...u8.subarray(i, i + 0x8000)); return btoa(s); };
+const b64Bytes = (b) => Uint8Array.from(atob(b), (c) => c.charCodeAt(0));
+async function streamBytes(u8, stream) { return new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(stream)).arrayBuffer()); }
+// Ключ шифрования — из секретного токена лиги: без кода восстановления копию не прочитать (и владельцу сервера тоже).
+async function cloudKey() {
+  const c = LEAGUE.cfg();
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(c.token), 'HKDF', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: new TextEncoder().encode('levelup-backup-v1'), info: new TextEncoder().encode(c.memberId) },
+    base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+async function cloudPack(state) {
+  let raw = new TextEncoder().encode(JSON.stringify(state)), z = false;
+  if (typeof CompressionStream !== 'undefined') { raw = await streamBytes(raw, new CompressionStream('gzip')); z = true; }
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await cloudKey(), raw));
+  return JSON.stringify({ v: 1, z, iv: bytesB64(iv), ct: bytesB64(ct) });
+}
+async function cloudUnpack(str) {
+  const o = JSON.parse(str);
+  let raw = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64Bytes(o.iv) }, await cloudKey(), b64Bytes(o.ct)));
+  if (o.z) raw = await streamBytes(raw, new DecompressionStream('gzip'));
+  return JSON.parse(new TextDecoder().decode(raw));
+}
+let cloudBusy = false;
+async function cloudSave(manual) {
+  if (!LEAGUE.joined() || cloudBusy || !crypto.subtle) return;
+  if (!manual && Date.now() - (S.settings.cloudAt || 0) < CLOUD_EVERY) return;
+  // На сервере есть копия, а этот телефон её не делал и не восстанавливал (новый телефон, сброс) — не затираем автоматически.
+  const srv = (LEAGUE.cfg().board || {}).backupAt;
+  if (!manual && srv && !S.settings.cloudAt) return;
+  if (manual && srv && !S.settings.cloudAt && !confirm('На сервере уже есть копия, сделанная раньше. Перезаписать её данными этого телефона?')) return;
+  cloudBusy = true;
+  try {
+    const r = await LEAGUE.backupPut(await cloudPack(S));
+    S.settings.cloudAt = r.updated_at || Date.now(); save();
+    if (manual) { toast('Копия сохранена в облаке', 'gold', 'upload'); SFX.play('confirm'); }
+  } catch (e) { if (manual) { toast(e.message || 'Не удалось сохранить копию'); SFX.play('error'); } }
+  cloudBusy = false;
+  if (manual && tab === 'settings') render(false);
+}
+async function cloudRestore(ask = true) {
+  let row;
+  try { row = await LEAGUE.backupGet(); } catch (e) { if (ask) toast(e.status === 404 ? 'Облачной копии пока нет' : e.message); return false; }
+  if (!confirm(`Найдена облачная копия от ${new Date(row.updated_at).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}. Заменить ею данные на этом телефоне?`)) return false;
+  try {
+    const data = await cloudUnpack(row.data);
+    S = hydrate(data); S.settings.onboarded = true; S.settings.cloudAt = row.updated_at; save();
+    applyTheme(S.settings.theme || 'reactor'); SFX.enabled = S.settings.sound;
+    toast('Данные восстановлены из облака', 'gold', 'download'); render(true);
+    return true;
+  } catch (e) { toast('Не удалось расшифровать копию — нужен код восстановления той же лиги'); return false; }
+}
+function cloudSettingsHTML() {
+  if (!LEAGUE.joined()) return `<h2>Облачная копия</h2><div class="card small muted">Автоматическая копия хранится на сервере лиги. Вступи в лигу или создай свою — и данные переживут потерю телефона.</div>`;
+  const srv = (LEAGUE.cfg().board || {}).backupAt || 0;
+  const at = S.settings.cloudAt || srv;
+  const foreign = srv && !S.settings.cloudAt;
+  return `<h2>Облачная копия</h2>
+    <div class="card">
+      <div class="small muted" style="margin-bottom:10px">Сохраняется автоматически раз в 2 часа, пока пользуешься приложением. Зашифрована ключом лиги — владелец сервера её не прочитает. Восстановить на новом телефоне: «Лига» → «Перенос с другого телефона» → код восстановления.</div>
+      <div class="row between" style="margin-bottom:10px"><span>Последняя копия</span><b>${at ? timeAgo(at) : 'ещё не было'}</b></div>
+      ${foreign ? '<div class="small err" style="margin-bottom:10px">Копия на сервере сделана на другом телефоне или до сброса. Автосохранение приостановлено, чтобы её не затереть: восстанови её или сохрани эту вручную.</div>' : ''}
+      <div class="row">
+        <button class="btn grow" data-act="cloud-save">${ico('upload')} Сохранить сейчас</button>
+        <button class="btn grow" data-act="cloud-restore">${ico('download')} Восстановить</button>
+      </div>
+    </div>`;
+}
+
+
+/* ---------------------- Уведомления (push через сервер лиги) ---------------------- */
+
+const PUSH_OK = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const keyBytes = (b) => { let s = b.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; return Uint8Array.from(atob(s), (c) => c.charCodeAt(0)); };
+function pushSettingsHTML() {
+  const head = '<h2>Уведомления</h2>';
+  if (!PUSH_OK()) return head + `<div class="card small muted">${IS_IOS ? 'На iPhone уведомления работают в установленном приложении (iOS 16.4 и новее): «Ещё» → «Установка на телефон».' : 'Этот браузер не поддерживает уведомления.'}</div>`;
+  if (IS_IOS && !IS_STANDALONE()) return head + '<div class="card small muted">На iPhone уведомления приходят только в установленное приложение: «Ещё» → «Установка на телефон», затем открой Level Up с экрана «Домой».</div>';
+  if (!LEAGUE.joined()) return head + '<div class="card small muted">Уведомления приходят через сервер лиги — вступи в лигу или создай свою во вкладке «Лига».</div>';
+  if (Notification.permission === 'denied') return head + '<div class="card small err">Уведомления запрещены для Level Up в настройках телефона. Разреши их там и вернись сюда.</div>';
+  return head + `
+    <div class="card">
+      <div class="row between">
+        <div><div style="font-weight:600">Вечернее напоминание</div><div class="small muted">Только если ты ещё не подвёл итоги дня</div></div>
+        <button class="switch ${S.settings.remind ? 'on' : ''}" data-act="push-remind" aria-label="Напоминание"><i></i></button>
+      </div>
+      ${S.settings.remind ? `<div class="row between" style="margin-top:12px"><span>Время</span><input type="time" id="remind-time" value="${esc(S.settings.remindTime || '21:00')}" style="width:auto"></div>` : ''}
+      <div class="row between" style="margin-top:14px">
+        <div><div style="font-weight:600">Суд лиги</div><div class="small muted">Новые доносы и похвалы, где нужен твой голос, и решения о тебе</div></div>
+        <button class="switch ${S.settings.pushCourt ? 'on' : ''}" data-act="push-court" aria-label="Суд лиги"><i></i></button>
+      </div>
+      ${S.settings.remind || S.settings.pushCourt ? '<button class="btn block sm" data-act="push-test" style="margin-top:14px">Прислать пробное уведомление</button>' : ''}
+      <div class="small" id="push-status" style="margin-top:8px"></div>
+    </div>`;
+}
+// Подписаться/обновить подписку на сервере или отписаться, если всё выключено.
+async function pushSync(interactive) {
+  if (!PUSH_OK() || !LEAGUE.joined()) return;
+  const st = $('#push-status');
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!S.settings.remind && !S.settings.pushCourt) {
+      if (sub) { await LEAGUE.pushUnsubscribe(sub.endpoint).catch(() => {}); await sub.unsubscribe(); }
+      return;
+    }
+    if (Notification.permission !== 'granted') return;
+    if (!sub) {
+      const { key } = await LEAGUE.pushKey();
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) });
+    }
+    await LEAGUE.pushSubscribe(sub.toJSON(), { remind: S.settings.remind ? S.settings.remindTime || '21:00' : '', tz: new Date().getTimezoneOffset(), court: !!S.settings.pushCourt });
+    S.settings.pushSyncedAt = todayKey(); save();
+    if (interactive && st) { st.className = 'small ok'; st.textContent = '✓ Уведомления включены'; }
+  } catch (e) {
+    if (interactive) { if (st) { st.className = 'small err'; st.textContent = '✕ ' + (e.message || e); } SFX.play('error'); }
+  }
+}
+async function pushToggle(field) {
+  const turningOn = !S.settings[field];
+  if (turningOn && Notification.permission === 'default') {
+    const perm = await Notification.requestPermission();   // вызывается прямо из нажатия — так требует iPhone
+    if (perm !== 'granted') { toast('Без разрешения уведомления не придут'); render(false); return; }
+  }
+  S.settings[field] = turningOn;
+  if (field === 'remind' && !S.settings.remindTime) S.settings.remindTime = '21:00';
+  save(); render(false);
+  await pushSync(true);
 }
 
 /* ---------------------- Знакомство (первый запуск) ---------------------- */
@@ -3182,6 +3323,14 @@ checkAchievements(true);
 save();
 render(true);
 scheduleSync(800);
+// Переход из уведомления: #day, #league.
+function openFromHash(h) {
+  const t = String(h || '').replace('#', '');
+  if (['day', 'league', 'hero', 'history', 'ach', 'settings'].includes(t)) { if (t === 'day') curDate = reportDay(); go(t); if (t === 'league') syncNow(); }
+}
+if (location.hash) { openFromHash(location.hash); history.replaceState(null, '', location.pathname + location.search); }
+if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', (e) => { if (e.data && e.data.go) openFromHash(e.data.go); });
+if ((S.settings.remind || S.settings.pushCourt) && S.settings.pushSyncedAt !== todayKey()) setTimeout(() => pushSync(false), 3000);
 if (!S.settings.onboarded && !Object.keys(S.log).length) setTimeout(onboardingStart, 500);
 else setTimeout(maybeWeekly, 900);
 

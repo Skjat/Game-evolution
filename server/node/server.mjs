@@ -59,14 +59,14 @@ const server = http.createServer(async (req, res) => {
     const chunks = [];
     for await (const c of req) {
       chunks.push(c);
-      if (chunks.reduce((n, b) => n + b.length, 0) > 64 * 1024) { res.writeHead(413).end(); return; }
+      if (chunks.reduce((n, b) => n + b.length, 0) > 2 * 1024 * 1024) { res.writeHead(413).end(); return; }
     }
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const headers = new Headers();
     for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string') headers.set(k, v);
     const hasBody = !['GET', 'HEAD'].includes(req.method);
     const request = new Request(url, { method: req.method, headers, body: hasBody ? Buffer.concat(chunks) : undefined });
-    const response = await worker.fetch(request, env);
+    const response = await worker.fetch(request, env, ctx);
     const out = {};
     response.headers.forEach((v, k) => { out[k] = v; });
     res.writeHead(response.status, out);
@@ -76,5 +76,9 @@ const server = http.createServer(async (req, res) => {
     res.end(JSON.stringify({ error: 'Ошибка сервера' }));
   }
 });
+
+// Аналог Cloudflare waitUntil и Cron: фоновые задачи и напоминания раз в 5 минут.
+const ctx = { waitUntil: (p) => Promise.resolve(p).catch(() => {}) };
+setInterval(() => worker.scheduled({}, env, ctx).catch(() => {}), 5 * 60 * 1000);
 
 server.listen(PORT, HOST, () => console.log(`Level Up league server: http://${HOST}:${PORT} (база ${DB_PATH})`));
