@@ -6,7 +6,7 @@
    ===================================================================== */
 
 const STORAGE_KEY = 'lvlup.v1';
-const APP_VERSION = 25;
+const APP_VERSION = 26;
 const EDIT_BACK_DAYS = 1;    // править можно сегодня и вчера; более ранние дни — только чтение
 const NIGHT_HOUR = 4;        // до 4 утра «Итоги» открываются на вчерашнем дне
 const COURT_POINTS = 3;   // штраф суда за утверждённый донос / бонус за похвалу — в каждый связанный параметр (до двух)   // совпадает с номером в sw.js (lvlup-vN)
@@ -314,6 +314,7 @@ function migrate(s) {
     for (const d of DEFAULT_DEBUFFS) if (['b_night', 'b_overeat', 'b_energy'].includes(d.id) && !s.debuffs.find((x) => x.id === d.id)) s.debuffs.push(clone(d));
   }
   s.settings = Object.assign({ sound: true, theme: 'reactor' }, s.settings || {});
+  if (s.settings.onboarded === undefined && Object.keys(s.log || {}).length) s.settings.onboarded = true;   // старые игроки знакомство не видят
   s.custom = Object.assign({ counters: [], milestones: [] }, s.custom || {});
   s.shared = Object.assign({ counters: [], milestones: [] }, s.shared || {});
   if (!Array.isArray(s.courtDone)) s.courtDone = [];
@@ -837,7 +838,8 @@ function openSheet(html) {
   $('#sheet').classList.remove('hidden');
 }
 let updatePending = false;
-function closeSheet() { micStop(); $('#sheet').classList.add('hidden'); $('#sheet-card').innerHTML = ''; if (updatePending) location.reload(); }
+function closeSheet() {
+  if (!S.settings.onboarded && $('#sheet-card .onb-dots')) { S.settings.onboarded = true; save(); } micStop(); $('#sheet').classList.add('hidden'); $('#sheet-card').innerHTML = ''; if (updatePending) location.reload(); }
 
 function statById(id) { return S.stats.find((s) => s.id === id); }
 function rewardsHTML(r) {
@@ -1165,6 +1167,7 @@ function viewHistory() {
 
   return `
     <h1>История</h1>
+    <button class="btn block sm" data-act="weekly" data-k="${addDays(weekStartKey(todayKey()), -7)}" style="margin-bottom:12px">${ico('chart')} Итоги прошлой недели</button>
     <div class="seg">
       ${[7, 30, 90].map((r) => `<button data-act="range" data-r="${r}" class="${histRange === r ? 'active' : ''}">${r} дней</button>`).join('')}
     </div>
@@ -2896,6 +2899,16 @@ ${LEAGUE.invite(c)}`, 'Приглашение скопировано');
       mutate(() => { for (const k in S.log) if (S.log[k].ms) S.log[k].ms = S.log[k].ms.filter((m) => m !== id); });
       break;
     }
+    case 'onb-next': if (onb === 0) onboardingSaveName(); onb = Math.min(2, onb + 1); onboardingRender(); break;
+    case 'onb-back': onb = Math.max(0, onb - 1); onboardingRender(); break;
+    case 'onb-theme': applyTheme(id, { switching: true }); render(false); onboardingRender(); break;
+    case 'onb-done':
+      if (onb === 0) onboardingSaveName();
+      S.settings.onboarded = true; save(); closeSheet(); scheduleSync();
+      if (!el.dataset.skip) { curDate = reportDay(); go('day'); toast('Отметь первый подвиг — и ядро зарядится', 'gold', 'bolt'); } else render(false);
+      break;
+    case 'show-onboarding': onboardingStart(); break;
+    case 'weekly': weeklyOpen(el.dataset.k); break;
     case 'weak-more': showAllWeak = !showAllWeak; render(false); break;
     case 'rm-counter':
       if (!isEditable(curDate)) break;
@@ -3012,6 +3025,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
   scheduleSync(300);
   if (todayKey() !== lastToday) {
+    setTimeout(maybeWeekly, 600);
     if (curDate === lastToday) curDate = reportDay();
     lastToday = todayKey();
     render(false);
@@ -3059,6 +3073,107 @@ function applyTheme(id, opts = {}) {
   }
 }
 
+/* ---------------------- Знакомство (первый запуск) ---------------------- */
+
+let onb = 0;
+function onboardingRender() {
+  const dots = `<div class="onb-dots">${[0, 1, 2].map((i) => `<i class="${i === onb ? 'on' : ''}"></i>`).join('')}</div>`;
+  const steps = [
+    () => `
+      <div class="onb-hero">${reactorHTML(S.profile.avatar, 'LVL 1')}</div>
+      <h1 style="text-align:center">Прокачай себя</h1>
+      <div class="muted" style="text-align:center">Level Up превращает твою жизнь в RPG: полезные дела качают параметры персонажа — Силу, Интеллект, Харизму и другие, а вредные привычки дают позорные клейма.</div>
+      <label class="f">Как тебя называть?</label>
+      <input type="text" id="onb-name" maxlength="24" placeholder="Имя героя" value="${S.profile.name === 'Герой' ? '' : esc(S.profile.name)}">`,
+    () => `
+      <h1>Выбери стиль</h1>
+      <div class="muted" style="margin-bottom:12px">Тему можно поменять в любой момент в «Ещё».</div>
+      <div class="themes">${THEMES.map((t) => `
+        <button class="theme-card ${(S.settings.theme || 'reactor') === t.id ? 'on' : ''}" data-act="onb-theme" data-id="${t.id}">
+          <span class="sw" style="background:radial-gradient(circle at 35% 30%, ${t.sw[2]}, ${t.sw[0]} 45%, ${t.sw[1]} 70%, ${t.sw[3]} 100%);--glow:${t.sw[0]}66;--ring:${t.sw[1]}"></span>
+          <span class="grow"><span class="tn">${esc(t.name)}</span><span class="td" style="display:block">${esc(t.desc)}</span></span>
+        </button>`).join('')}</div>`,
+    () => `
+      <h1>Как играть</h1>
+      <div class="onb-list">
+        <div>${ico(TI().tabs.day)}<span><b>Вечером — итоги дня.</b> Отметь подвиги: тренировку, чтение, новое знакомство. Каждый даёт очки параметрам.</span></div>
+        <div>${ico('arrowDown')}<span><b>Честно отметь слабости.</b> Они копят позор, а на новых ступенях клейма параметры падают. 14 чистых дней снимают клеймо.</span></div>
+        <div>${ico('mic')}<span><b>Или просто расскажи ИИ</b>, как прошёл день, — он сам всё разнесёт по полочкам (нужен ключ Claude).</span></div>
+        <div>${ico('users')}<span><b>Соревнуйся с друзьями</b> в лиге: таблица недели, лента, суд с доносами и похвалами.</span></div>
+      </div>`,
+  ];
+  openSheet(`
+    ${dots}
+    ${steps[onb]()}
+    <div class="row" style="margin-top:20px">
+      ${onb ? '<button class="btn grow" data-act="onb-back">Назад</button>' : '<button class="btn grow" data-act="onb-done" data-skip="1">Пропустить</button>'}
+      <button class="btn primary grow" data-act="${onb < 2 ? 'onb-next' : 'onb-done'}">${onb < 2 ? 'Дальше' : 'Начать'}</button>
+    </div>`);
+}
+function onboardingSaveName() {
+  const n = $('#onb-name');
+  if (n && n.value.trim()) { S.profile.name = n.value.trim().slice(0, 24); save(); }
+}
+function onboardingStart() { onb = 0; onboardingRender(); }
+
+/* ---------------------- Итоги недели ---------------------- */
+
+function weekSummary(ws) {
+  const we = addDays(ws, 6), days = [];
+  for (let k = ws; k <= we; k = addDays(k, 1)) days.push(k);
+  const per = {}; let xp = 0, quests = 0, weak = 0, best = null, active = 0;
+  for (const k of days) {
+    const d = getDay(k), p = dayPoints(d, k), t = dayTotal(d, k);
+    for (const id in p) if (statById(id)) per[id] = (per[id] || 0) + p[id];
+    xp += t; if (isActive(d)) active++;
+    quests += ((d || {}).d || []).length; weak += ((d || {}).b || []).length;
+    if (!best || t > best.t) best = { k, t };
+  }
+  const brands = days.flatMap((k) => brandEvents(k).filter((e) => !e.redeem));
+  const redeems = days.flatMap((k) => brandEvents(k).filter((e) => e.redeem));
+  const ach = allAchievements().filter((a) => a.kind !== 'shame' && S.ach[a.id] && S.ach[a.id] >= ws && S.ach[a.id] <= we);
+  let place = null;
+  const b = LEAGUE.joined() ? LEAGUE.cfg().board : null;
+  if (b && b.members && b.members.length > 1) {
+    const val = (m) => { const pr = m.profile || {}; return pr.weekStart === ws ? pr.week || 0 : pr.lastWeekStart === ws ? pr.lastWeek || 0 : 0; };
+    const sorted = [...b.members].sort((x, y) => val(y) - val(x));
+    place = { n: sorted.findIndex((m) => m.id === b.me) + 1, of: sorted.length };
+  }
+  return { ws, we, per, xp, quests, weak, best, active, brands, redeems, ach, place };
+}
+function weeklyOpen(ws) {
+  const w = weekSummary(ws);
+  const statRows = S.stats.filter((s) => w.per[s.id]).sort((a, b) => w.per[b.id] - w.per[a.id]).map((s) =>
+    `<span class="chip" style="color:${s.color}">${ico(s.icon)}${esc(s.name)} ${sign(w.per[s.id])}</span>`).join('');
+  openSheet(`
+    <h1>Итоги недели</h1>
+    <div class="sx" style="margin-bottom:12px">${shortDate(w.ws)} — ${shortDate(w.we)}</div>
+    <div class="card sweep center"><div class="daytotal ${w.xp < 0 ? 'neg' : ''}">${sign(w.xp)} XP</div>
+      <div class="small muted">${w.active} из 7 дней с прогрессом${w.place ? ` · ${w.place.n}-е место в лиге из ${w.place.of}` : ''}</div></div>
+    <div class="kpis">
+      <div class="kpi"><b>${w.quests}</b><span>${plural(w.quests, 'подвиг', 'подвига', 'подвигов')}</span></div>
+      <div class="kpi"><b class="${w.weak ? 'tox' : ''}">${w.weak}</b><span>${plural(w.weak, 'срыв', 'срыва', 'срывов')}</span></div>
+      <div class="kpi"><b>${w.ach.length}</b><span>${plural(w.ach.length, 'награда', 'награды', 'наград')}</span></div>
+    </div>
+    ${statRows ? `<h2>Рост параметров</h2><div class="chips">${statRows}</div>` : ''}
+    ${w.best && w.best.t > 0 ? `<div class="card small" style="margin-top:12px">${ico('star')} Лучший день — ${humanDate(w.best.k)}: ${sign(w.best.t)} XP</div>` : ''}
+    ${w.ach.length ? `<h2>Новые награды</h2><div class="chips">${w.ach.slice(0, 8).map((a) => `<span class="chip" style="color:var(--am)">${ico(a.icon)}${esc(a.name)}</span>`).join('')}</div>` : ''}
+    ${w.brands.length || w.redeems.length ? `<h2 class="bad-h">Позор</h2><div class="card small">
+      ${w.brands.map((e) => `<div class="tox">${ico('skull')} Клеймо «${esc(e.title)}»</div>`).join('')}
+      ${w.redeems.map((e) => `<div class="ok">${ico('sparkle')} Снято «${esc(e.title)}»</div>`).join('')}</div>` : ''}
+    <div class="muted small" style="margin-top:14px">${w.xp > 0 && w.weak === 0 ? 'Чистая неделя без срывов — так держать!' : w.weak > w.quests ? 'Срывов больше, чем подвигов. Новая неделя — новый шанс.' : 'Новая неделя уже началась — вперёд за уровнем!'}</div>
+    <button class="btn primary block" data-act="close-sheet" style="margin-top:16px">Вперёд</button>`);
+}
+// В новую неделю один раз показываем итоги прошлой (если в ней что-то было).
+function maybeWeekly() {
+  if (!S.settings.onboarded) return;
+  const ws = addDays(weekStartKey(todayKey()), -7);
+  if (S.settings.weeklySeen === ws) return;
+  const any = [0, 1, 2, 3, 4, 5, 6].some((i) => isLogged(getDay(addDays(ws, i))));
+  S.settings.weeklySeen = ws; save();
+  if (any && $('#sheet').classList.contains('hidden')) weeklyOpen(ws);
+}
+
 /* ---------------------- Старт ---------------------- */
 
 applyTheme(S.settings.theme || 'reactor');
@@ -3067,6 +3182,8 @@ checkAchievements(true);
 save();
 render(true);
 scheduleSync(800);
+if (!S.settings.onboarded && !Object.keys(S.log).length) setTimeout(onboardingStart, 500);
+else setTimeout(maybeWeekly, 900);
 
 // Обновления: новая версия ставится в фоне и сразу подхватывается перезагрузкой (если не открыта шторка).
 let swReg = null;

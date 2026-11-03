@@ -871,3 +871,13 @@ body[data-dummy], [data-theme="grimoire"] body { background: radial-gradient(ell
 .menu-item .chev { color: var(--muted); font-size: 22px; line-height: 1; }
 .menu-item .qi svg.i { width: 22px; height: 22px; }
 .backbar { background: none; border: 0; color: var(--ic); font: 600 14px var(--body); padding: 6px 0 2px; margin-top: 4px; }
+
+/* ---------- Знакомство и итоги недели ---------- */
+.onb-dots { display: flex; justify-content: center; gap: 6px; margin-bottom: 14px; }
+.onb-dots i { width: 7px; height: 7px; border-radius: 50%; background: rgba(var(--tint-rgb), .2); }
+.onb-dots i.on { width: 22px; border-radius: 4px; background: var(--ic); }
+.onb-hero { display: flex; justify-content: center; margin: 4px 0 6px; }
+.onb-hero .reactor { transform: scale(.82); }
+.onb-list > div { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid rgba(var(--g2-rgb), .14); font-size: 14px; line-height: 1.45; }
+.onb-list > div:last-child { border-bottom: 0; }
+.onb-list svg.i { width: 22px; height: 22px; color: var(--ic); flex: none; margin-top: 2px; }
